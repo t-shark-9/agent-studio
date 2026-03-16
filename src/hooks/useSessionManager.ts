@@ -29,9 +29,7 @@ export function useSessionManager() {
     
     if (data) {
       setSessions(data as unknown as ChatSession[]);
-      if (!activeSessionId && data.length > 0) {
-        setActiveSessionId(data[0].id);
-      }
+      // Don't auto-select a session — let the welcome screen show first
     }
   }, [browserToken, activeSessionId]);
 
