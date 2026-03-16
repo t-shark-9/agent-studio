@@ -60,6 +60,9 @@ const Index = () => {
 
   // Restore canvas when switching sessions
   useEffect(() => {
+    // Don't wipe canvas while showing a template via srcdoc
+    if (activeHtml) return;
+
     if (!messages.length) {
       setActiveCanvas(null);
       return;
@@ -73,7 +76,7 @@ const Index = () => {
       }
     }
     setActiveCanvas(null);
-  }, [activeSessionId, messages]);
+  }, [activeSessionId, messages, activeHtml]);
 
   // Listen for postMessage from canvas iframes
   useEffect(() => {
