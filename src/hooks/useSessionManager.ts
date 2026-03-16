@@ -90,12 +90,12 @@ export function useSessionManager() {
 
     const { data, error } = await supabase
       .from('chat_messages')
-      .insert({
+      .insert([{
         session_id: activeSessionId,
         role,
         content,
         metadata: metadata || {},
-      })
+      }])
       .select()
       .single();
 
