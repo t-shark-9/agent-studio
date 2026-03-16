@@ -61,7 +61,6 @@ const ACCEPTED_TYPES = 'image/*,.pdf,.doc,.docx,.txt,.csv,.json,.md,.html,.css,.
 function deduplicateTemplates(templates: Template[]): Template[] {
   const seen = new Map<string, Template>();
   for (const t of templates) {
-    // Keep the most recent version of each name
     const key = t.name.toLowerCase().trim();
     const existing = seen.get(key);
     if (!existing || t.createdAt > existing.createdAt) {
@@ -92,7 +91,6 @@ function groupByCategory(templates: Template[]): CategoryGroup[] {
     });
   }
 
-  // Sort groups: Creativity, Dining, Travel, Shopping, Other
   const order = ['Creativity', 'Dining', 'Travel', 'Shopping', 'Other'];
   return result.sort((a, b) => {
     const ai = order.indexOf(a.label);
@@ -112,7 +110,6 @@ export function WelcomeScreen({ onSend, onUseTemplate }: WelcomeScreenProps) {
   const [focused, setFocused] = useState(false);
   const [templates, setTemplates] = useState<Template[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     fetch(`${CANVAS_URL}/api/templates`)
@@ -166,8 +163,8 @@ export function WelcomeScreen({ onSend, onUseTemplate }: WelcomeScreenProps) {
   const categoryGroups = groupByCategory(templates);
 
   return (
-    <div className="h-full flex flex-col overflow-y-auto">
-      <div className="flex-1 flex flex-col items-center justify-center px-6 py-10 min-h-0">
+    <div className="h-full overflow-y-auto">
+      <div className="min-h-full flex flex-col items-center justify-center px-6 py-10">
         {/* Greeting */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -187,102 +184,17 @@ export function WelcomeScreen({ onSend, onUseTemplate }: WelcomeScreenProps) {
           </p>
         </motion.div>
 
-        {/* Intent cards */}
+        {/* Centered chat input */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.1 }}
-          className="grid grid-cols-3 gap-3 w-full max-w-2xl mb-6"
+          className="w-full max-w-2xl mb-8"
         >
-          {INTENT_CARDS.map((card, i) => (
-            <motion.div
-              key={card.key}
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ delay: 0.15 + i * 0.06 }}
-            >
-              <Card
-                className="group cursor-pointer border-border hover:border-primary/40 bg-card hover:bg-primary/5 transition-all duration-300"
-                onClick={() => onSend(card.prompt)}
-              >
-                <CardContent className="p-4 text-center">
-                  <div className={`h-10 w-10 mx-auto rounded-xl bg-gradient-to-br ${card.color} flex items-center justify-center mb-2 group-hover:scale-110 transition-transform`}>
-                    <card.icon className="h-5 w-5 text-primary" />
-                  </div>
-                  <h3 className="text-xs font-semibold text-foreground mb-0.5">{card.label}</h3>
-                  <p className="text-[10px] text-muted-foreground leading-relaxed">{card.description}</p>
-                </CardContent>
-              </Card>
-            </motion.div>
-          ))}
-        </motion.div>
-
-        {/* Templates by category */}
-        {categoryGroups.length > 0 && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.25 }}
-            className="w-full max-w-2xl mb-6"
-          >
-            <div className="flex items-center gap-2 mb-3">
-              <LayoutGrid className="h-4 w-4 text-muted-foreground" />
-              <span className="text-xs font-semibold text-muted-foreground tracking-wider uppercase">Templates</span>
-            </div>
-            <div className="space-y-3">
-              {categoryGroups.map(group => (
-                <div key={group.label}>
-                  <div className="flex items-center gap-1.5 mb-1.5">
-                    <group.icon className="h-3 w-3 text-muted-foreground/70" />
-                    <span className="text-[11px] font-medium text-muted-foreground">{group.label}</span>
-                  </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                    {group.templates.map(tpl => (
-                      <Card
-                        key={tpl.id}
-                        className="group cursor-pointer border-border hover:border-primary/30 bg-card/50 hover:bg-primary/5 transition-all"
-                        onClick={() => onUseTemplate?.(tpl.id)}
-                      >
-                        <CardContent className="p-3">
-                          <div className="flex items-start justify-between gap-1">
-                            <h4 className="text-[11px] font-semibold text-foreground mb-0.5 truncate">{tpl.name}</h4>
-                            {tpl.settings && tpl.settings.length > 0 && (
-                              <div className="flex items-center gap-0.5 shrink-0" title={`${tpl.settings.length} customizable setting${tpl.settings.length > 1 ? 's' : ''}`}>
-                                <Settings className="h-2.5 w-2.5 text-muted-foreground/60" />
-                                <span className="text-[9px] text-muted-foreground/60">{tpl.settings.length}</span>
-                              </div>
-                            )}
-                          </div>
-                          <p className="text-[10px] text-muted-foreground line-clamp-1">{tpl.description}</p>
-                        </CardContent>
-                      </Card>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </motion.div>
-        )}
-
-        {/* Subtle hint */}
-        <motion.p
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.6 }}
-          className="text-[11px] text-muted-foreground/50 flex items-center gap-1.5 mb-4"
-        >
-          <Lightbulb className="h-3 w-3" />
-          Agent Studio creates interactive visual experiences, not just text
-        </motion.p>
-      </div>
-
-      {/* Chat input pinned at bottom */}
-      <div className="shrink-0 border-t border-border bg-card/80 backdrop-blur-sm p-3">
-        <div className="max-w-2xl mx-auto">
           <div
-            className={`rounded-2xl border bg-card shadow-sm transition-all duration-200 ${
+            className={`rounded-2xl border bg-card shadow-lg transition-all duration-200 ${
               focused
-                ? 'border-primary/50 shadow-md shadow-primary/5 ring-1 ring-primary/20'
+                ? 'border-primary/50 shadow-xl shadow-primary/5 ring-1 ring-primary/20'
                 : 'border-border'
             }`}
           >
@@ -334,7 +246,6 @@ export function WelcomeScreen({ onSend, onUseTemplate }: WelcomeScreenProps) {
               />
 
               <textarea
-                ref={textareaRef}
                 value={input}
                 onChange={e => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
@@ -355,7 +266,95 @@ export function WelcomeScreen({ onSend, onUseTemplate }: WelcomeScreenProps) {
               </Button>
             </div>
           </div>
-        </div>
+        </motion.div>
+
+        {/* Intent cards */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.2 }}
+          className="grid grid-cols-3 gap-3 w-full max-w-2xl mb-6"
+        >
+          {INTENT_CARDS.map((card, i) => (
+            <motion.div
+              key={card.key}
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: 0.25 + i * 0.06 }}
+            >
+              <Card
+                className="group cursor-pointer border-border hover:border-primary/40 bg-card hover:bg-primary/5 transition-all duration-300"
+                onClick={() => onSend(card.prompt)}
+              >
+                <CardContent className="p-4 text-center">
+                  <div className={`h-10 w-10 mx-auto rounded-xl bg-gradient-to-br ${card.color} flex items-center justify-center mb-2 group-hover:scale-110 transition-transform`}>
+                    <card.icon className="h-5 w-5 text-primary" />
+                  </div>
+                  <h3 className="text-xs font-semibold text-foreground mb-0.5">{card.label}</h3>
+                  <p className="text-[10px] text-muted-foreground leading-relaxed">{card.description}</p>
+                </CardContent>
+              </Card>
+            </motion.div>
+          ))}
+        </motion.div>
+
+        {/* Templates by category */}
+        {categoryGroups.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.35 }}
+            className="w-full max-w-2xl mb-6"
+          >
+            <div className="flex items-center gap-2 mb-3">
+              <LayoutGrid className="h-4 w-4 text-muted-foreground" />
+              <span className="text-xs font-semibold text-muted-foreground tracking-wider uppercase">Templates</span>
+            </div>
+            <div className="space-y-3">
+              {categoryGroups.map(group => (
+                <div key={group.label}>
+                  <div className="flex items-center gap-1.5 mb-1.5">
+                    <group.icon className="h-3 w-3 text-muted-foreground/70" />
+                    <span className="text-[11px] font-medium text-muted-foreground">{group.label}</span>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {group.templates.map(tpl => (
+                      <Card
+                        key={tpl.id}
+                        className="group cursor-pointer border-border hover:border-primary/30 bg-card/50 hover:bg-primary/5 transition-all"
+                        onClick={() => onUseTemplate?.(tpl.id)}
+                      >
+                        <CardContent className="p-3">
+                          <div className="flex items-start justify-between gap-1">
+                            <h4 className="text-[11px] font-semibold text-foreground mb-0.5 truncate">{tpl.name}</h4>
+                            {tpl.settings && tpl.settings.length > 0 && (
+                              <div className="flex items-center gap-0.5 shrink-0" title={`${tpl.settings.length} customizable setting${tpl.settings.length > 1 ? 's' : ''}`}>
+                                <Settings className="h-2.5 w-2.5 text-muted-foreground/60" />
+                                <span className="text-[9px] text-muted-foreground/60">{tpl.settings.length}</span>
+                              </div>
+                            )}
+                          </div>
+                          <p className="text-[10px] text-muted-foreground line-clamp-1">{tpl.description}</p>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        )}
+
+        {/* Subtle hint */}
+        <motion.p
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.6 }}
+          className="text-[11px] text-muted-foreground/50 flex items-center gap-1.5"
+        >
+          <Lightbulb className="h-3 w-3" />
+          Agent Studio creates interactive visual experiences, not just text
+        </motion.p>
       </div>
     </div>
   );
