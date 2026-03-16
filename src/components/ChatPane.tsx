@@ -8,9 +8,10 @@ interface ChatPaneProps {
   messages: ChatMessage[];
   isLoading: boolean;
   onSend: (message: string) => void;
+  onOpenCanvas?: (canvas: { id: string; url: string; embedUrl: string; title: string }) => void;
 }
 
-export function ChatPane({ messages, isLoading, onSend }: ChatPaneProps) {
+export function ChatPane({ messages, isLoading, onSend, onOpenCanvas }: ChatPaneProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -28,7 +29,7 @@ export function ChatPane({ messages, isLoading, onSend }: ChatPaneProps) {
         ) : (
           <>
             {messages.map(msg => (
-              <ChatMessageBubble key={msg.id} message={msg} />
+              <ChatMessageBubble key={msg.id} message={msg} onOpenCanvas={onOpenCanvas} />
             ))}
             {isLoading && <TypingIndicator />}
           </>

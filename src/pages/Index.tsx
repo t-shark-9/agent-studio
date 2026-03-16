@@ -1,20 +1,30 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import { StatusBar } from '@/components/StatusBar';
 import { TaskRail } from '@/components/TaskRail';
 import { ChatPane } from '@/components/ChatPane';
 import { ContextPanel } from '@/components/ContextPanel';
+import { CanvasPanel } from '@/components/CanvasPanel';
 import { AuthModal } from '@/components/AuthModal';
 import { useSessionManager } from '@/hooks/useSessionManager';
 import { detectIntent } from '@/hooks/useIntentDetection';
-import { useMockAgent } from '@/hooks/useMockAgent';
+import { useAgent } from '@/hooks/useAgent';
 import type { ContextType } from '@/types/chat';
+
+interface CanvasData {
+  id: string;
+  url: string;
+  embedUrl: string;
+  title: string;
+}
 
 const Index = () => {
   const [isEphemeral, setIsEphemeral] = useState(false);
   const [showAuth, setShowAuth] = useState(false);
   const [railCollapsed, setRailCollapsed] = useState(false);
-  const [contextCollapsed, setContextCollapsed] = useState(false);
+  const [contextCollapsed, setContextCollapsed] = useState(true);
+  const [selectedModel, setSelectedModel] = useState('claude-sonnet-4.6');
+  const [activeCanvas, setActiveCanvas] = useState<CanvasData | null>(null);
 
   const {
     sessions,
@@ -30,10 +40,21 @@ const Index = () => {
     deleteSession,
   } = useSessionManager();
 
-  const { getResponse } = useMockAgent();
+  const { getResponse } = useAgent();
+
+  // Listen for postMessage from canvas iframes
+  useEffect(() => {
+    const handler = (e: MessageEvent) => {
+      if (e.data?.type === 'canvas-action') {
+        const actionText = `[Selected: ${e.data.action}] ${JSON.stringify(e.data.data)}`;
+        handleSend(actionText);
+      }
+    };
+    window.addEventListener('message', handler);
+    return () => window.removeEventListener('message', handler);
+  }, []);
 
   const handleSend = useCallback(async (content: string) => {
-    // Ensure we have a session
     let currentSessionId = activeSessionId;
     if (!currentSessionId) {
       const session = await createSession();
@@ -41,7 +62,6 @@ const Index = () => {
       currentSessionId = session.id;
     }
 
-    // Add user message
     await addMessage('user', content);
 
     // Detect intent
@@ -50,20 +70,30 @@ const Index = () => {
 
     if (intent) {
       contextType = intent.type;
-      await updateSessionContext(currentSessionId, intent.type, 
+      await updateSessionContext(currentSessionId, intent.type,
         intent.type === 'trip' ? `Trip${intent.entities?.destination ? ` to ${intent.entities.destination}` : ''}` :
         intent.type === 'booking' ? 'Restaurant Booking' :
         intent.type === 'media' ? 'Media Creation' : 'Chat'
       );
-      setContextCollapsed(false);
     }
 
-    // Get AI response
+    // Get AI response from OpenClaw
     setIsLoading(true);
-    const response = await getResponse(content, contextType);
-    await addMessage('assistant', response);
+    try {
+      const response = await getResponse(content, contextType, selectedModel);
+
+      if (response.type === 'canvas' && response.canvas) {
+        // Store canvas reference in message metadata
+        await addMessage('assistant', response.content, { canvas: response.canvas });
+        setActiveCanvas(response.canvas);
+      } else {
+        await addMessage('assistant', response.content);
+      }
+    } catch (err) {
+      await addMessage('assistant', 'Sorry, something went wrong. Please try again.');
+    }
     setIsLoading(false);
-  }, [activeSessionId, activeSession, addMessage, createSession, getResponse, setIsLoading, updateSessionContext]);
+  }, [activeSessionId, activeSession, addMessage, createSession, getResponse, setIsLoading, updateSessionContext, selectedModel]);
 
   const handleContextAction = useCallback((message: string) => {
     handleSend(message);
@@ -78,8 +108,13 @@ const Index = () => {
     };
     const ctx = contextType || 'chat';
     await createSession(titles[ctx], ctx);
-    if (ctx !== 'chat') setContextCollapsed(false);
+    setActiveCanvas(null);
   }, [createSession]);
+
+  const handleOpenCanvas = useCallback((canvas: CanvasData) => {
+    setActiveCanvas(canvas);
+    setContextCollapsed(true);
+  }, []);
 
   const currentContextType = (activeSession?.context_type as ContextType) || 'chat';
 
@@ -89,6 +124,8 @@ const Index = () => {
         isEphemeral={isEphemeral}
         onToggleEphemeral={() => setIsEphemeral(e => !e)}
         onAuthClick={() => setShowAuth(true)}
+        selectedModel={selectedModel}
+        onModelChange={setSelectedModel}
       />
 
       <div className="flex-1 flex min-h-0">
@@ -106,14 +143,32 @@ const Index = () => {
           messages={messages}
           isLoading={isLoading}
           onSend={handleSend}
+          onOpenCanvas={handleOpenCanvas}
         />
 
-        <ContextPanel
-          contextType={currentContextType}
-          collapsed={contextCollapsed}
-          onToggleCollapse={() => setContextCollapsed(c => !c)}
-          onAction={handleContextAction}
-        />
+        {/* Show canvas panel when a canvas is active, otherwise show context panel */}
+        <AnimatePresence mode="wait">
+          {activeCanvas ? (
+            <CanvasPanel
+              key="canvas"
+              canvas={activeCanvas}
+              onClose={() => setActiveCanvas(null)}
+              onAction={(action, data) => {
+                handleSend(`[Action: ${action}] ${JSON.stringify(data)}`);
+              }}
+            />
+          ) : (
+            !contextCollapsed && (
+              <ContextPanel
+                key="context"
+                contextType={currentContextType}
+                collapsed={contextCollapsed}
+                onToggleCollapse={() => setContextCollapsed(c => !c)}
+                onAction={handleContextAction}
+              />
+            )
+          )}
+        </AnimatePresence>
       </div>
 
       <AnimatePresence>

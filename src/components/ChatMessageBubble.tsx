@@ -1,14 +1,16 @@
 import { motion } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
-import { Bot, User } from 'lucide-react';
+import { Bot, User, Layout } from 'lucide-react';
 import type { ChatMessage as ChatMessageType } from '@/types/chat';
 
 interface ChatMessageProps {
   message: ChatMessageType;
+  onOpenCanvas?: (canvas: { id: string; url: string; embedUrl: string; title: string }) => void;
 }
 
-export function ChatMessageBubble({ message }: ChatMessageProps) {
+export function ChatMessageBubble({ message, onOpenCanvas }: ChatMessageProps) {
   const isUser = message.role === 'user';
+  const canvas = message.metadata?.canvas as { id: string; url: string; embedUrl: string; title: string } | undefined;
 
   return (
     <motion.div
@@ -26,24 +28,44 @@ export function ChatMessageBubble({ message }: ChatMessageProps) {
         )}
       </div>
 
-      <div className={`max-w-[75%] rounded-lg px-3.5 py-2.5 text-sm ${
-        isUser
-          ? 'bg-secondary text-secondary-foreground'
-          : 'bg-surface text-foreground'
-      }`}>
-        <ReactMarkdown
-          components={{
-            p: ({ children }) => <p className="mb-2 last:mb-0 leading-relaxed">{children}</p>,
-            strong: ({ children }) => <strong className="font-semibold text-primary">{children}</strong>,
-            ul: ({ children }) => <ul className="list-disc list-inside mb-2 space-y-1">{children}</ul>,
-            li: ({ children }) => <li className="text-sm">{children}</li>,
-            code: ({ children }) => (
-              <code className="font-mono text-xs bg-muted px-1.5 py-0.5 rounded">{children}</code>
-            ),
-          }}
-        >
-          {message.content}
-        </ReactMarkdown>
+      <div className="max-w-[75%] space-y-2">
+        {message.content && (
+          <div className={`rounded-lg px-3.5 py-2.5 text-sm ${
+            isUser
+              ? 'bg-secondary text-secondary-foreground'
+              : 'bg-surface text-foreground'
+          }`}>
+            <ReactMarkdown
+              components={{
+                p: ({ children }) => <p className="mb-2 last:mb-0 leading-relaxed">{children}</p>,
+                strong: ({ children }) => <strong className="font-semibold text-primary">{children}</strong>,
+                ul: ({ children }) => <ul className="list-disc list-inside mb-2 space-y-1">{children}</ul>,
+                li: ({ children }) => <li className="text-sm">{children}</li>,
+                code: ({ children }) => (
+                  <code className="font-mono text-xs bg-muted px-1.5 py-0.5 rounded">{children}</code>
+                ),
+              }}
+            >
+              {message.content}
+            </ReactMarkdown>
+          </div>
+        )}
+
+        {canvas && onOpenCanvas && (
+          <button
+            onClick={() => onOpenCanvas(canvas)}
+            className="group w-full text-left rounded-lg border border-primary/30 bg-primary/5 hover:bg-primary/10 px-4 py-3 transition-all hover:border-primary/50 hover:shadow-lg hover:shadow-primary/5"
+          >
+            <div className="flex items-center gap-2 mb-1">
+              <Layout className="h-3.5 w-3.5 text-primary" />
+              <span className="text-sm font-semibold text-primary">{canvas.title}</span>
+            </div>
+            <p className="text-xs text-muted-foreground">Interactive experience — click to open</p>
+            <span className="inline-block mt-2 text-[10px] font-semibold tracking-wider uppercase bg-primary text-primary-foreground px-2 py-0.5 rounded-full group-hover:bg-primary/90">
+              Open Canvas
+            </span>
+          </button>
+        )}
       </div>
     </motion.div>
   );
