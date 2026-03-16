@@ -2,51 +2,72 @@ import { useState, useEffect, useRef, type KeyboardEvent } from 'react';
 import { motion } from 'framer-motion';
 import {
   Send, Paperclip, Sparkles, Plane, UtensilsCrossed, Image,
-  Lightbulb, FileText, X, LayoutGrid, Video, ShoppingBag, Globe, Settings,
+  Lightbulb, FileText, X, Video, ShoppingCart, Globe,
+  Mountain, Clapperboard, LayoutGrid, Cpu,
+  type LucideIcon,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { AGENT_MODELS } from '@/components/StatusBar';
 import type { AttachedFile } from './MessageComposer';
+import { getCachedTemplates, getTemplates, type TemplateData } from '@/lib/templateCache';
 
-interface TemplateSetting {
-  key: string;
-  label: string;
-  description: string;
-  type: 'toggle' | 'select' | 'text';
-  defaultValue: boolean | string;
-}
-
-interface Template {
-  id: string;
-  name: string;
-  description: string;
-  category: string;
-  settings?: TemplateSetting[];
-  createdAt: number;
-}
-
-interface CategoryGroup {
-  label: string;
-  icon: React.ElementType;
-  templates: Template[];
-}
-
-const CANVAS_URL = import.meta.env.VITE_CANVAS_URL || '/canvas';
-
-const INTENT_CARDS = [
-  { key: 'booking', icon: UtensilsCrossed, label: 'Book a Restaurant', description: 'Find and reserve the perfect table', color: 'from-orange-500/20 to-red-500/20', prompt: 'Book a restaurant for me' },
-  { key: 'media', icon: Image, label: 'Generate Image', description: 'Create stunning visuals with AI', color: 'from-purple-500/20 to-pink-500/20', prompt: 'Create an image for me' },
-  { key: 'trip', icon: Plane, label: 'Plan a Trip', description: 'Build your perfect getaway itinerary', color: 'from-blue-500/20 to-cyan-500/20', prompt: 'Plan a trip for me' },
-];
-
-const CATEGORY_META: Record<string, { label: string; icon: React.ElementType }> = {
-  'restaurant-booking': { label: 'Dining', icon: UtensilsCrossed },
-  'media-creation': { label: 'Creativity', icon: Image },
-  'video-generation': { label: 'Creativity', icon: Video },
-  'grocery-shopping': { label: 'Shopping', icon: ShoppingBag },
-  'trip-planning': { label: 'Travel', icon: Plane },
-  'flight-search': { label: 'Travel', icon: Globe },
+/** Map icon name strings from template data to lucide components */
+const ICON_MAP: Record<string, LucideIcon> = {
+  'utensils-crossed': UtensilsCrossed,
+  'mountain': Mountain,
+  'clapperboard': Clapperboard,
+  'shopping-cart': ShoppingCart,
+  'plane': Plane,
+  'image': Image,
+  'video': Video,
+  'globe': Globe,
 };
+
+const FALLBACK_ICON: LucideIcon = LayoutGrid;
+const FALLBACK_COLOR = 'from-gray-500/20 to-slate-500/20';
+
+const DEFAULT_COLORS: Record<string, string> = {
+  'restaurant-booking': 'from-orange-500/20 to-red-500/20',
+  'video-generation': 'from-violet-500/20 to-purple-500/20',
+  'grocery-shopping': 'from-green-500/20 to-emerald-500/20',
+  'trip-planning': 'from-blue-500/20 to-cyan-500/20',
+};
+
+interface UniformCard {
+  id: string;
+  icon: LucideIcon;
+  label: string;
+  description: string;
+  color: string;
+  action: { type: 'send'; prompt: string } | { type: 'template'; templateId: string };
+}
+
+function templateToCard(tpl: TemplateData): UniformCard {
+  const IconComp = (tpl.icon && ICON_MAP[tpl.icon]) || FALLBACK_ICON;
+  const color = tpl.color || DEFAULT_COLORS[tpl.category] || FALLBACK_COLOR;
+  return {
+    id: tpl.id,
+    icon: IconComp,
+    label: tpl.name,
+    description: tpl.description,
+    color,
+    action: { type: 'template', templateId: tpl.id },
+  };
+}
+
+function deduplicateTemplates(templates: TemplateData[]): TemplateData[] {
+  const seen = new Map<string, TemplateData>();
+  for (const t of templates) {
+    const key = t.name.toLowerCase().trim();
+    const existing = seen.get(key);
+    if (!existing || t.createdAt > existing.createdAt) {
+      seen.set(key, t);
+    }
+  }
+  return Array.from(seen.values());
+}
 
 const GREETING = (() => {
   const h = new Date().getHours();
@@ -58,64 +79,23 @@ const GREETING = (() => {
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 const ACCEPTED_TYPES = 'image/*,.pdf,.doc,.docx,.txt,.csv,.json,.md,.html,.css,.js,.ts,.py';
 
-function deduplicateTemplates(templates: Template[]): Template[] {
-  const seen = new Map<string, Template>();
-  for (const t of templates) {
-    const key = t.name.toLowerCase().trim();
-    const existing = seen.get(key);
-    if (!existing || t.createdAt > existing.createdAt) {
-      seen.set(key, t);
-    }
-  }
-  return Array.from(seen.values());
-}
-
-function groupByCategory(templates: Template[]): CategoryGroup[] {
-  const groups = new Map<string, Template[]>();
-
-  for (const t of templates) {
-    const meta = CATEGORY_META[t.category];
-    const groupLabel = meta?.label || 'Other';
-    if (!groups.has(groupLabel)) groups.set(groupLabel, []);
-    groups.get(groupLabel)!.push(t);
-  }
-
-  const result: CategoryGroup[] = [];
-  for (const [label, tpls] of groups) {
-    const firstCat = tpls[0]?.category || '';
-    const meta = CATEGORY_META[firstCat];
-    result.push({
-      label,
-      icon: meta?.icon || LayoutGrid,
-      templates: tpls.sort((a, b) => b.createdAt - a.createdAt),
-    });
-  }
-
-  const order = ['Creativity', 'Dining', 'Travel', 'Shopping', 'Other'];
-  return result.sort((a, b) => {
-    const ai = order.indexOf(a.label);
-    const bi = order.indexOf(b.label);
-    return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
-  });
-}
-
 interface WelcomeScreenProps {
   onSend: (message: string, files?: AttachedFile[]) => void;
   onUseTemplate?: (templateId: string) => void;
+  selectedModel: string;
+  onModelChange: (model: string) => void;
 }
 
-export function WelcomeScreen({ onSend, onUseTemplate }: WelcomeScreenProps) {
+export function WelcomeScreen({ onSend, onUseTemplate, selectedModel, onModelChange }: WelcomeScreenProps) {
   const [input, setInput] = useState('');
   const [files, setFiles] = useState<AttachedFile[]>([]);
   const [focused, setFocused] = useState(false);
-  const [templates, setTemplates] = useState<Template[]>([]);
+  const [templates, setTemplates] = useState<TemplateData[]>(() => deduplicateTemplates(getCachedTemplates()));
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    fetch(`${CANVAS_URL}/api/templates`)
-      .then(r => r.ok ? r.json() : [])
-      .then((data: Template[]) => setTemplates(deduplicateTemplates(data)))
-      .catch(() => {});
+    // Background refresh — cached data already shown instantly above
+    getTemplates().then(data => setTemplates(deduplicateTemplates(data)));
   }, []);
 
   const handleSend = () => {
@@ -160,7 +140,16 @@ export function WelcomeScreen({ onSend, onUseTemplate }: WelcomeScreenProps) {
     return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
   };
 
-  const categoryGroups = groupByCategory(templates);
+  // Build card list from templates only
+  const allCards: UniformCard[] = templates.map(templateToCard);
+
+  const handleCardClick = (card: UniformCard) => {
+    if (card.action.type === 'send') {
+      onSend(card.action.prompt);
+    } else {
+      onUseTemplate?.(card.action.templateId);
+    }
+  };
 
   return (
     <div className="h-full overflow-y-auto">
@@ -265,26 +254,45 @@ export function WelcomeScreen({ onSend, onUseTemplate }: WelcomeScreenProps) {
                 <Send className="h-4 w-4" />
               </Button>
             </div>
+            {/* Model selector */}
+            <div className="flex items-center gap-1.5 px-3 pb-2">
+              <Cpu className="h-3 w-3 text-muted-foreground" />
+              <Select value={selectedModel} onValueChange={onModelChange}>
+                <SelectTrigger className="h-6 w-auto min-w-[130px] border-0 bg-transparent text-[11px] text-muted-foreground px-1 py-0 shadow-none hover:text-foreground">
+                  <SelectValue>
+                    {AGENT_MODELS.find(m => m.id === selectedModel)?.label || selectedModel}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {AGENT_MODELS.map(model => (
+                    <SelectItem key={model.id} value={model.id} className="text-xs">
+                      <span className="font-medium">{model.label}</span>
+                      <span className="text-muted-foreground ml-1">({model.provider})</span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </motion.div>
 
-        {/* Intent cards */}
+        {/* Uniform card grid — intent cards + templates, all same style */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.2 }}
           className="grid grid-cols-3 gap-3 w-full max-w-2xl mb-6"
         >
-          {INTENT_CARDS.map((card, i) => (
+          {allCards.map((card, i) => (
             <motion.div
-              key={card.key}
+              key={card.id}
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
-              transition={{ delay: 0.25 + i * 0.06 }}
+              transition={{ delay: 0.25 + i * 0.04 }}
             >
               <Card
                 className="group cursor-pointer border-border hover:border-primary/40 bg-card hover:bg-primary/5 transition-all duration-300"
-                onClick={() => onSend(card.prompt)}
+                onClick={() => handleCardClick(card)}
               >
                 <CardContent className="p-4 text-center">
                   <div className={`h-10 w-10 mx-auto rounded-xl bg-gradient-to-br ${card.color} flex items-center justify-center mb-2 group-hover:scale-110 transition-transform`}>
@@ -297,53 +305,6 @@ export function WelcomeScreen({ onSend, onUseTemplate }: WelcomeScreenProps) {
             </motion.div>
           ))}
         </motion.div>
-
-        {/* Templates by category */}
-        {categoryGroups.length > 0 && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.35 }}
-            className="w-full max-w-2xl mb-6"
-          >
-            <div className="flex items-center gap-2 mb-3">
-              <LayoutGrid className="h-4 w-4 text-muted-foreground" />
-              <span className="text-xs font-semibold text-muted-foreground tracking-wider uppercase">Templates</span>
-            </div>
-            <div className="space-y-3">
-              {categoryGroups.map(group => (
-                <div key={group.label}>
-                  <div className="flex items-center gap-1.5 mb-1.5">
-                    <group.icon className="h-3 w-3 text-muted-foreground/70" />
-                    <span className="text-[11px] font-medium text-muted-foreground">{group.label}</span>
-                  </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                    {group.templates.map(tpl => (
-                      <Card
-                        key={tpl.id}
-                        className="group cursor-pointer border-border hover:border-primary/30 bg-card/50 hover:bg-primary/5 transition-all"
-                        onClick={() => onUseTemplate?.(tpl.id)}
-                      >
-                        <CardContent className="p-3">
-                          <div className="flex items-start justify-between gap-1">
-                            <h4 className="text-[11px] font-semibold text-foreground mb-0.5 truncate">{tpl.name}</h4>
-                            {tpl.settings && tpl.settings.length > 0 && (
-                              <div className="flex items-center gap-0.5 shrink-0" title={`${tpl.settings.length} customizable setting${tpl.settings.length > 1 ? 's' : ''}`}>
-                                <Settings className="h-2.5 w-2.5 text-muted-foreground/60" />
-                                <span className="text-[9px] text-muted-foreground/60">{tpl.settings.length}</span>
-                              </div>
-                            )}
-                          </div>
-                          <p className="text-[10px] text-muted-foreground line-clamp-1">{tpl.description}</p>
-                        </CardContent>
-                      </Card>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </motion.div>
-        )}
 
         {/* Subtle hint */}
         <motion.p

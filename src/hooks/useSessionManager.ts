@@ -52,6 +52,8 @@ export function useSessionManager() {
   useEffect(() => {
     if (activeSessionId) {
       loadMessages(activeSessionId);
+    } else {
+      setMessages([]);
     }
   }, [activeSessionId, loadMessages]);
 
@@ -80,25 +82,46 @@ export function useSessionManager() {
   }, [browserToken]);
 
   const autoTitleSession = useCallback(async (sessionId: string, firstMessage: string) => {
-    // Generate a short title from the first user message
-    const title = firstMessage
-      .replace(/\[Attached:.*?\]/g, '') // strip file attachment tags
-      .trim()
-      .slice(0, 60)
-      .replace(/\s+/g, ' ')
-      .trim();
-    if (!title) return;
+    const cleaned = firstMessage.replace(/\[Attached:.*?\]/g, '').replace(/\[Canvas\]\s*/g, '').trim();
+    if (!cleaned) return;
 
-    const displayTitle = title.length >= 58 ? title.slice(0, 55) + '...' : title;
+    // Immediate fallback title (shown while AI generates)
+    const fallback = cleaned.slice(0, 55).replace(/\s+/g, ' ').trim();
+    const fallbackTitle = fallback.length >= 53 ? fallback.slice(0, 50) + '...' : fallback;
 
-    await supabase
-      .from('chat_sessions')
-      .update({ title: displayTitle })
-      .eq('id', sessionId);
+    const updateTitle = async (title: string) => {
+      await supabase.from('chat_sessions').update({ title }).eq('id', sessionId);
+      setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, title } : s));
+    };
 
-    setSessions(prev => prev.map(s =>
-      s.id === sessionId ? { ...s, title: displayTitle } : s
-    ));
+    // Show fallback immediately
+    await updateTitle(fallbackTitle);
+
+    // Ask AI for a better title in the background
+    const API_URL = import.meta.env.VITE_API_URL || '/api';
+    try {
+      const res = await fetch(`${API_URL}/chat/completions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: [
+            { role: 'system', content: 'Generate a short chat session title (3-6 words, no quotes) for this user message. Reply with ONLY the title, nothing else.' },
+            { role: 'user', content: cleaned.slice(0, 200) },
+          ],
+          model: 'claude-sonnet-4-5-20250514',
+          max_tokens: 20,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const aiTitle = data.choices?.[0]?.message?.content?.trim();
+        if (aiTitle && aiTitle.length > 0 && aiTitle.length < 60) {
+          await updateTitle(aiTitle);
+        }
+      }
+    } catch {
+      // Keep fallback title — already set above
+    }
   }, []);
 
   const addMessage = useCallback(async (

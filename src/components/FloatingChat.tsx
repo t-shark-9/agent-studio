@@ -1,6 +1,8 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { motion, useDragControls } from 'framer-motion';
-import { Send, Paperclip, GripVertical, Maximize2, Minimize2, FileText, X, Sparkles } from 'lucide-react';
+import { Send, Paperclip, GripVertical, Maximize2, Minimize2, FileText, X, Sparkles, Cpu } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { AGENT_MODELS } from '@/components/StatusBar';
 import type { AttachedFile } from './MessageComposer';
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
@@ -9,11 +11,12 @@ const ACCEPTED_TYPES = 'image/*,.pdf,.doc,.docx,.txt,.csv,.json,.md,.html,.css,.
 interface FloatingChatProps {
   onSend: (message: string, files?: AttachedFile[]) => void;
   isLoading?: boolean;
-  /** Start expanded in the center (welcome state) vs collapsed bottom-right */
   startCentered?: boolean;
+  selectedModel: string;
+  onModelChange: (model: string) => void;
 }
 
-export function FloatingChat({ onSend, isLoading, startCentered }: FloatingChatProps) {
+export function FloatingChat({ onSend, isLoading, startCentered, selectedModel, onModelChange }: FloatingChatProps) {
   const [input, setInput] = useState('');
   const [files, setFiles] = useState<AttachedFile[]>([]);
   const [focused, setFocused] = useState(false);
@@ -225,6 +228,25 @@ export function FloatingChat({ onSend, isLoading, startCentered }: FloatingChatP
             >
               <Send className="h-4 w-4" />
             </button>
+          </div>
+          {/* Model selector */}
+          <div className="flex items-center gap-1.5 px-3 pb-2">
+            <Cpu className="h-3 w-3 text-muted-foreground" />
+            <Select value={selectedModel} onValueChange={onModelChange}>
+              <SelectTrigger className="h-6 w-auto min-w-[130px] border-0 bg-transparent text-[11px] text-muted-foreground px-1 py-0 shadow-none hover:text-foreground">
+                <SelectValue>
+                  {AGENT_MODELS.find(m => m.id === selectedModel)?.label || selectedModel}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {AGENT_MODELS.map(model => (
+                  <SelectItem key={model.id} value={model.id} className="text-xs">
+                    <span className="font-medium">{model.label}</span>
+                    <span className="text-muted-foreground ml-1">({model.provider})</span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </div>
       </motion.div>

@@ -7,14 +7,10 @@ import {
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { getCachedTemplates, getTemplates, refreshTemplates, type TemplateData } from '@/lib/templateCache';
 
-interface Template {
-  id: string;
-  name: string;
-  description: string;
-  category: string;
-  createdAt: number;
-}
+// Re-export for Index.tsx
+export const refreshTemplateCache = refreshTemplates;
 
 interface FlowStep {
   question: string;
@@ -27,31 +23,6 @@ interface Flow {
   description: string;
   color: string;
   steps: FlowStep[];
-}
-
-const CANVAS_URL = import.meta.env.VITE_CANVAS_URL || '/canvas';
-
-// Module-level cache so templates load instantly on revisit
-let _templateCache: Template[] = [];
-let _templateFetchPromise: Promise<Template[]> | null = null;
-
-function prefetchTemplates(): Promise<Template[]> {
-  if (!_templateFetchPromise) {
-    _templateFetchPromise = fetch(`${CANVAS_URL}/api/templates`)
-      .then(r => r.ok ? r.json() : [])
-      .then((data: Template[]) => { _templateCache = data; return data; })
-      .catch(() => []);
-  }
-  return _templateFetchPromise;
-}
-
-// Start fetching immediately on module load
-prefetchTemplates();
-
-// Exported so Index.tsx can refresh after extracting a template
-export function refreshTemplateCache(): Promise<Template[]> {
-  _templateFetchPromise = null;
-  return prefetchTemplates();
 }
 
 const FLOWS: Record<string, Flow> = {
@@ -171,15 +142,11 @@ export function CanvasHome({ onStartFlow, onUseTemplate }: CanvasHomeProps) {
   const [activeFlow, setActiveFlow] = useState<string | null>(null);
   const [stepIndex, setStepIndex] = useState(0);
   const [answers, setAnswers] = useState<string[]>([]);
-  const [templates, setTemplates] = useState<Template[]>(_templateCache);
+  const [templates, setTemplates] = useState<TemplateData[]>(getCachedTemplates());
   const [showTemplates, setShowTemplates] = useState(false);
 
   useEffect(() => {
-    // If cache was already populated, we're instant. Still refresh in background.
-    if (_templateCache.length > 0) {
-      setTemplates(_templateCache);
-    }
-    prefetchTemplates().then(setTemplates);
+    getTemplates().then(setTemplates);
   }, []);
 
   const handleSelectFlow = (flowKey: string) => {

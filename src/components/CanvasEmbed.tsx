@@ -1,8 +1,6 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { motion } from 'framer-motion';
 
-const CANVAS_SERVER = import.meta.env.VITE_CANVAS_SERVER || 'http://72.62.154.89:4200';
-
 interface CanvasEmbedProps {
   canvasId: string;
   onCanvasAction: (action: string, payload: Record<string, unknown>) => void;
@@ -35,7 +33,7 @@ export function CanvasEmbed({ canvasId, onCanvasAction }: CanvasEmbedProps) {
     >
       <iframe
         ref={iframeRef}
-        src={`${CANVAS_SERVER}/embed/${canvasId}`}
+        src={`/canvas/embed/${canvasId}`}
         className="w-full flex-1 border-0"
         sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
         allow="clipboard-write"

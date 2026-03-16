@@ -1,13 +1,9 @@
+import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Plus, MessageSquare, Plane, UtensilsCrossed, Image, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Plus, MessageSquare, Plane, UtensilsCrossed, Image, Trash2, ChevronLeft, ChevronRight, LogIn, LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { supabase } from '@/integrations/supabase/client';
 import type { ChatSession, ContextType } from '@/types/chat';
-
-const QUICK_ACTIONS: { label: string; icon: React.ElementType; context: ContextType }[] = [
-  { label: 'Plan Trip', icon: Plane, context: 'trip' },
-  { label: 'Book Table', icon: UtensilsCrossed, context: 'booking' },
-  { label: 'Create Media', icon: Image, context: 'media' },
-];
 
 const CONTEXT_ICONS: Record<ContextType, React.ElementType> = {
   chat: MessageSquare,
@@ -22,8 +18,9 @@ interface TaskRailProps {
   collapsed: boolean;
   onToggleCollapse: () => void;
   onSelectSession: (id: string) => void;
-  onNewSession: (context?: ContextType) => void;
+  onNewSession: () => void;
   onDeleteSession: (id: string) => void;
+  onAuthClick: () => void;
 }
 
 export function TaskRail({
@@ -34,7 +31,17 @@ export function TaskRail({
   onSelectSession,
   onNewSession,
   onDeleteSession,
+  onAuthClick,
 }: TaskRailProps) {
+  const [user, setUser] = useState<{ email?: string } | null>(null);
+
+  useEffect(() => {
+    supabase.auth.onAuthStateChange((_, session) => {
+      setUser(session?.user ?? null);
+    });
+    supabase.auth.getUser().then(({ data }) => setUser(data.user));
+  }, []);
+
   return (
     <motion.div
       className="bg-card border-r border-border flex flex-col shrink-0 overflow-hidden"
@@ -61,25 +68,6 @@ export function TaskRail({
           {!collapsed && <span className="text-xs">New Chat</span>}
         </Button>
       </div>
-
-      {/* Quick Actions */}
-      {!collapsed && (
-        <div className="p-2 border-b border-border space-y-1">
-          <span className="text-[10px] font-semibold text-muted-foreground tracking-wider px-2">QUICK ACTIONS</span>
-          {QUICK_ACTIONS.map(action => (
-            <Button
-              key={action.label}
-              variant="ghost"
-              size="sm"
-              className="w-full justify-start gap-2 h-7 text-xs text-muted-foreground hover:text-foreground"
-              onClick={() => onNewSession(action.context)}
-            >
-              <action.icon className="h-3.5 w-3.5 shrink-0" />
-              {action.label}
-            </Button>
-          ))}
-        </div>
-      )}
 
       {/* Sessions List */}
       <div className="flex-1 overflow-y-auto p-2 space-y-0.5">
@@ -116,6 +104,36 @@ export function TaskRail({
             </motion.div>
           );
         })}
+      </div>
+
+      {/* Sign in / account — bottom of rail */}
+      <div className="p-2 border-t border-border">
+        {user ? (
+          <div className={`flex items-center gap-2 ${collapsed ? 'justify-center' : ''}`}>
+            {!collapsed && (
+              <span className="text-[10px] text-muted-foreground truncate flex-1">{user.email}</span>
+            )}
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 w-7 p-0 shrink-0"
+              onClick={() => supabase.auth.signOut()}
+              title="Sign Out"
+            >
+              <LogOut className="h-3.5 w-3.5 text-muted-foreground" />
+            </Button>
+          </div>
+        ) : (
+          <Button
+            variant="ghost"
+            size="sm"
+            className={`h-8 text-xs gap-1.5 text-muted-foreground hover:text-foreground ${collapsed ? 'w-full justify-center p-0' : 'w-full justify-start'}`}
+            onClick={onAuthClick}
+          >
+            <LogIn className="h-3.5 w-3.5 shrink-0" />
+            {!collapsed && <span>Sign In</span>}
+          </Button>
+        )}
       </div>
     </motion.div>
   );

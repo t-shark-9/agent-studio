@@ -1,10 +1,12 @@
 import { useState, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MessageSquare, Code2, Sparkles } from 'lucide-react';
-import { StatusBar } from '@/components/StatusBar';
+import { MessageSquare, Code2, Sparkles, Settings, Cpu } from 'lucide-react';
+import { AGENT_MODELS } from '@/components/StatusBar';
 import { TaskRail } from '@/components/TaskRail';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { CanvasEmbed } from '@/components/CanvasEmbed';
 import { CodeView } from '@/components/CodeView';
+import { CanvasSettings } from '@/components/CanvasSettings';
 import { FloatingChat } from '@/components/FloatingChat';
 import { WelcomeScreen } from '@/components/WelcomeScreen';
 import { AuthModal } from '@/components/AuthModal';
@@ -15,7 +17,7 @@ import { useAgent } from '@/hooks/useAgent';
 import type { ContextType } from '@/types/chat';
 import type { AttachedFile } from '@/components/MessageComposer';
 
-type OverlayMode = 'none' | 'chat' | 'code';
+type OverlayMode = 'none' | 'chat' | 'code' | 'settings';
 
 const CANVAS_URL = import.meta.env.VITE_CANVAS_URL || '/canvas';
 
@@ -24,10 +26,10 @@ interface CanvasData {
   url: string;
   embedUrl: string;
   title: string;
+  templateId?: string;
 }
 
 const Index = () => {
-  const [isEphemeral, setIsEphemeral] = useState(false);
   const [showAuth, setShowAuth] = useState(false);
   const [railCollapsed, setRailCollapsed] = useState(true);
   const [selectedModel, setSelectedModel] = useState('claude-sonnet-4.6');
@@ -177,11 +179,12 @@ const Index = () => {
       });
       if (res.ok) {
         const data = await res.json();
-        const canvas = {
+        const canvas: CanvasData = {
           id: data.canvasId,
           url: data.url,
           embedUrl: data.embedUrl,
           title: data.title,
+          templateId,
         };
         setActiveCanvas(canvas);
         setRailCollapsed(false);
@@ -198,18 +201,11 @@ const Index = () => {
     handleSend(`[Canvas] ${summary}`);
   }, [handleSend]);
 
-  const handleNewSession = useCallback(async (contextType?: ContextType) => {
-    const titles: Record<ContextType, string> = {
-      chat: 'New Chat',
-      trip: 'Trip Planning',
-      booking: 'Restaurant Booking',
-      media: 'Media Creation',
-    };
-    const ctx = contextType || 'chat';
-    await createSession(titles[ctx], ctx);
+  const handleNewSession = useCallback(() => {
+    setActiveSessionId(null);
     setActiveCanvas(null);
     setOverlayMode('none');
-  }, [createSession]);
+  }, [setActiveSessionId]);
 
   const handleSelectSession = useCallback((id: string) => {
     setActiveSessionId(id);
@@ -221,16 +217,7 @@ const Index = () => {
   }, []);
 
   return (
-    <div className="h-screen flex flex-col bg-background overflow-hidden">
-      <StatusBar
-        isEphemeral={isEphemeral}
-        onToggleEphemeral={() => setIsEphemeral(e => !e)}
-        onAuthClick={() => setShowAuth(true)}
-        selectedModel={selectedModel}
-        onModelChange={setSelectedModel}
-      />
-
-      <div className="flex-1 flex min-h-0">
+    <div className="h-screen flex bg-background overflow-hidden">
         <TaskRail
           sessions={sessions}
           activeSessionId={activeSessionId}
@@ -239,6 +226,7 @@ const Index = () => {
           onSelectSession={handleSelectSession}
           onNewSession={handleNewSession}
           onDeleteSession={deleteSession}
+          onAuthClick={() => setShowAuth(true)}
         />
 
         {/* Main content — single unified area */}
@@ -273,6 +261,17 @@ const Index = () => {
                   <Code2 className="h-3.5 w-3.5" />
                   Code
                 </button>
+                <button
+                  onClick={() => toggleOverlay('settings')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                    overlayMode === 'settings'
+                      ? 'bg-primary text-primary-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
+                  }`}
+                >
+                  <Settings className="h-3.5 w-3.5" />
+                  Settings
+                </button>
               </div>
             </div>
           )}
@@ -290,7 +289,12 @@ const Index = () => {
                   transition={{ duration: 0.2 }}
                   className="h-full"
                 >
-                  <WelcomeScreen onSend={handleSend} onUseTemplate={handleUseTemplate} />
+                  <WelcomeScreen
+                    onSend={handleSend}
+                    onUseTemplate={handleUseTemplate}
+                    selectedModel={selectedModel}
+                    onModelChange={setSelectedModel}
+                  />
                 </motion.div>
               )}
 
@@ -337,9 +341,29 @@ const Index = () => {
                 >
                   {overlayMode === 'chat' && (
                     <>
-                      <div className="p-3 border-b border-border flex items-center gap-2">
-                        <MessageSquare className="h-4 w-4 text-primary" />
-                        <span className="text-sm font-semibold">Chat</span>
+                      <div className="p-3 border-b border-border flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <MessageSquare className="h-4 w-4 text-primary" />
+                          <span className="text-sm font-semibold">Chat</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <Cpu className="h-3 w-3 text-muted-foreground" />
+                          <Select value={selectedModel} onValueChange={setSelectedModel}>
+                            <SelectTrigger className="h-6 w-auto min-w-[120px] border-border bg-secondary text-[11px] px-2 py-0">
+                              <SelectValue>
+                                {AGENT_MODELS.find(m => m.id === selectedModel)?.label || selectedModel}
+                              </SelectValue>
+                            </SelectTrigger>
+                            <SelectContent>
+                              {AGENT_MODELS.map(model => (
+                                <SelectItem key={model.id} value={model.id} className="text-xs">
+                                  <span className="font-medium">{model.label}</span>
+                                  <span className="text-muted-foreground ml-1">({model.provider})</span>
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
                       </div>
                       <div className="flex-1 overflow-y-auto p-3 space-y-3 min-h-0">
                         {messages.map(msg => {
@@ -388,6 +412,9 @@ const Index = () => {
                   {overlayMode === 'code' && (
                     <CodeView canvasId={activeCanvas.id} />
                   )}
+                  {overlayMode === 'settings' && (
+                    <CanvasSettings canvasId={activeCanvas.id} templateId={activeCanvas.templateId} />
+                  )}
                 </motion.div>
               )}
             </AnimatePresence>
@@ -398,11 +425,12 @@ const Index = () => {
                 onSend={handleSend}
                 isLoading={isLoading}
                 startCentered={false}
+                selectedModel={selectedModel}
+                onModelChange={setSelectedModel}
               />
             )}
           </div>
         </div>
-      </div>
 
       <AnimatePresence>
         {showAuth && <AuthModal onClose={() => setShowAuth(false)} />}
