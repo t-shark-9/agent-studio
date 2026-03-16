@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { supabase } from '@/integrations/supabase/client';
 
-export const OPENCLAW_MODELS = [
+export const AGENT_MODELS = [
   { id: 'claude-sonnet-4.6', label: 'Claude Sonnet 4.6', provider: 'Anthropic' },
   { id: 'claude-opus-4.6', label: 'Claude Opus 4.6', provider: 'Anthropic' },
   { id: 'claude-haiku-4.5', label: 'Claude Haiku 4.5', provider: 'Anthropic' },
@@ -44,7 +44,7 @@ export function StatusBar({ isEphemeral, onToggleEphemeral, onAuthClick, selecte
     return `${m.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
   };
 
-  const currentModel = OPENCLAW_MODELS.find(m => m.id === selectedModel);
+  const currentModel = AGENT_MODELS.find(m => m.id === selectedModel);
 
   return (
     <div className="h-10 bg-card border-b border-border flex items-center justify-between px-4 shrink-0">
@@ -54,7 +54,7 @@ export function StatusBar({ isEphemeral, onToggleEphemeral, onAuthClick, selecte
           animate={{ opacity: [1, 0.4, 1] }}
           transition={{ duration: 2, repeat: Infinity }}
         />
-        <span className="text-xs font-mono text-primary font-semibold">OPENCLAW</span>
+        <span className="text-xs font-mono text-primary font-semibold">AGENT STUDIO</span>
       </div>
 
       <div className="flex items-center gap-3">
@@ -68,7 +68,7 @@ export function StatusBar({ isEphemeral, onToggleEphemeral, onAuthClick, selecte
               </SelectValue>
             </SelectTrigger>
             <SelectContent>
-              {OPENCLAW_MODELS.map(model => (
+              {AGENT_MODELS.map(model => (
                 <SelectItem key={model.id} value={model.id} className="text-xs">
                   <span className="font-medium">{model.label}</span>
                   <span className="text-muted-foreground ml-1.5">via {model.provider}</span>

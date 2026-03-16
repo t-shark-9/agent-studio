@@ -79,6 +79,28 @@ export function useSessionManager() {
     return null;
   }, [browserToken]);
 
+  const autoTitleSession = useCallback(async (sessionId: string, firstMessage: string) => {
+    // Generate a short title from the first user message
+    const title = firstMessage
+      .replace(/\[Attached:.*?\]/g, '') // strip file attachment tags
+      .trim()
+      .slice(0, 60)
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!title) return;
+
+    const displayTitle = title.length >= 58 ? title.slice(0, 55) + '...' : title;
+
+    await supabase
+      .from('chat_sessions')
+      .update({ title: displayTitle })
+      .eq('id', sessionId);
+
+    setSessions(prev => prev.map(s =>
+      s.id === sessionId ? { ...s, title: displayTitle } : s
+    ));
+  }, []);
+
   const addMessage = useCallback(async (
     role: 'user' | 'assistant' | 'system',
     content: string,
@@ -99,11 +121,18 @@ export function useSessionManager() {
 
     if (data && !error) {
       const msg = data as unknown as ChatMessage;
-      setMessages(prev => [...prev, msg]);
+      setMessages(prev => {
+        const updated = [...prev, msg];
+        // Auto-title on first user message
+        if (role === 'user' && updated.filter(m => m.role === 'user').length === 1) {
+          autoTitleSession(activeSessionId, content);
+        }
+        return updated;
+      });
       return msg;
     }
     return null;
-  }, [activeSessionId]);
+  }, [activeSessionId, autoTitleSession]);
 
   const updateSessionContext = useCallback(async (sessionId: string, contextType: ContextType, title?: string) => {
     const updates: Record<string, unknown> = { context_type: contextType };

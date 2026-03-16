@@ -28,7 +28,7 @@ interface StreamCallbacks {
   onError?: (error: Error) => void;
 }
 
-const CANVAS_SYSTEM_PROMPT = `You are OpenClaw, an AI assistant that creates rich visual experiences instead of plain text responses.
+const CANVAS_SYSTEM_PROMPT = `You are Agent Studio, an AI assistant that creates rich visual experiences instead of plain text responses.
 
 When a user asks you to DO something (book a restaurant, plan a trip, shop for products, build a website, compare options, fill out a form, etc.), you MUST respond with a visual interactive UI instead of text.
 
@@ -44,7 +44,7 @@ RULES FOR CANVAS UIs:
 3. Make it INTERACTIVE — buttons, selectors, cards that respond to clicks
 4. Include inline JavaScript for interactivity
 5. When the user makes a selection or takes action, call: canvasAction('action_name', { ...data })
-   This function is automatically available — it sends the action back to OpenClaw
+   This function is automatically available — it sends the action back to Agent Studio
 6. NEVER use external CDNs or scripts — everything must be inline
 7. Make it mobile-responsive
 8. The UI should feel like a native app, not a website

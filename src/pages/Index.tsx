@@ -51,23 +51,23 @@ const Index = () => {
 
   const { getResponse } = useAgent();
 
+  // Whether we're on the welcome screen (no active session)
+  const isWelcome = !activeSessionId && messages.length === 0;
+
   // Restore canvas when switching sessions — scan messages for the last canvas
   useEffect(() => {
     if (!messages.length) {
       setActiveCanvas(null);
       return;
     }
-    // Walk messages backwards to find the most recent canvas
     for (let i = messages.length - 1; i >= 0; i--) {
       const meta = messages[i].metadata as Record<string, unknown> | undefined;
       const canvas = meta?.canvas as CanvasData | undefined;
       if (canvas?.id) {
         setActiveCanvas(canvas);
-        if (viewMode === 'canvas') return; // already on canvas view
         return;
       }
     }
-    // No canvas found in this session
     setActiveCanvas(null);
   }, [activeSessionId, messages]);
 
@@ -117,7 +117,7 @@ const Index = () => {
         name: f.file.name,
         size: f.file.size,
         type: f.file.type,
-        url: f.preview || undefined, // data URL for images
+        url: f.preview || undefined,
       }));
     }
 
@@ -143,7 +143,7 @@ const Index = () => {
       );
     }
 
-    // Get AI response from OpenClaw
+    // Get AI response
     setIsLoading(true);
     try {
       const response = await getResponse(fullContent, contextType, selectedModel);
@@ -152,6 +152,8 @@ const Index = () => {
         await addMessage('assistant', response.content, { canvas: response.canvas });
         setActiveCanvas(response.canvas);
         setViewMode('canvas');
+        // Auto-open sidebar when AI generates something
+        setRailCollapsed(false);
         extractTemplate(response.canvas.id);
       } else {
         await addMessage('assistant', response.content);
@@ -164,10 +166,17 @@ const Index = () => {
 
   const handleStartFlow = useCallback((message: string) => {
     handleSend(message);
-    setViewMode('chat');
   }, [handleSend]);
 
   const handleUseTemplate = useCallback(async (templateId: string) => {
+    // Create a session if we don't have one
+    let currentSessionId = activeSessionId;
+    if (!currentSessionId) {
+      const session = await createSession();
+      if (!session) return;
+      currentSessionId = session.id;
+    }
+
     try {
       const res = await fetch(`${CANVAS_URL}/api/templates/${templateId}/instantiate`, {
         method: 'POST',
@@ -175,18 +184,23 @@ const Index = () => {
       });
       if (res.ok) {
         const data = await res.json();
-        setActiveCanvas({
+        const canvas = {
           id: data.canvasId,
           url: data.url,
           embedUrl: data.embedUrl,
           title: data.title,
-        });
+        };
+        setActiveCanvas(canvas);
         setViewMode('canvas');
+        setRailCollapsed(false);
+        // Save template usage in chat history
+        await addMessage('user', `Use template: ${data.title}`);
+        await addMessage('assistant', `Here's your ${data.title}. You can interact with it or ask me to make changes.`, { canvas });
       }
     } catch {
       // ignore
     }
-  }, []);
+  }, [activeSessionId, createSession, addMessage]);
 
   const handleCanvasAction = useCallback((action: string, payload: Record<string, unknown>) => {
     const summary = payload.summary || payload.label || action;
@@ -208,7 +222,13 @@ const Index = () => {
 
   const handleSelectSession = useCallback((id: string) => {
     setActiveSessionId(id);
-    // Canvas will be restored by the useEffect above when messages load
+  }, [setActiveSessionId]);
+
+  // Go back to welcome screen
+  const handleGoHome = useCallback(() => {
+    setActiveSessionId(null);
+    setActiveCanvas(null);
+    setRailCollapsed(true);
   }, [setActiveSessionId]);
 
   const VIEW_TABS: { mode: ViewMode; icon: React.ElementType; label: string }[] = [
@@ -240,9 +260,8 @@ const Index = () => {
 
         {/* Main content area */}
         <div className="flex-1 flex flex-col min-w-0">
-          {/* Welcome screen when no session is active */}
-          {!activeSessionId && messages.length === 0 ? (
-            <WelcomeScreen onSend={handleSend} />
+          {isWelcome ? (
+            <WelcomeScreen onSend={handleSend} onUseTemplate={handleUseTemplate} />
           ) : (
             <>
               {/* View toggle bar */}

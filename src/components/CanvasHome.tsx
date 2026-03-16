@@ -348,7 +348,7 @@ export function CanvasHome({ onStartFlow, onUseTemplate }: CanvasHomeProps) {
           className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-medium mb-4"
         >
           <Sparkles className="h-3 w-3" />
-          Powered by OpenClaw
+          Powered by Agent Studio
         </motion.div>
         <h1 className="text-2xl font-bold text-foreground mb-2">What would you like to do?</h1>
         <p className="text-sm text-muted-foreground">Choose an experience or start from a template</p>
