@@ -14,6 +14,7 @@ export interface ChatSession {
   title: string;
   context_type: ContextType;
   is_ephemeral: boolean;
+  canvas_id?: string | null;
   created_at: string;
   updated_at: string;
 }
