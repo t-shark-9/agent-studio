@@ -3,6 +3,7 @@ import { ChatMessageBubble, TypingIndicator } from './ChatMessageBubble';
 import { MessageComposer } from './MessageComposer';
 import { IntentCardFlow } from './IntentCardFlow';
 import type { ChatMessage } from '@/types/chat';
+import type { AttachedFile } from './MessageComposer';
 
 interface CanvasData {
   id: string;
@@ -14,7 +15,7 @@ interface CanvasData {
 interface ChatPaneProps {
   messages: ChatMessage[];
   isLoading: boolean;
-  onSend: (message: string) => void;
+  onSend: (message: string, files?: AttachedFile[]) => void;
   onOpenCanvas?: (canvas: CanvasData) => void;
 }
 
@@ -31,7 +32,7 @@ export function ChatPane({ messages, isLoading, onSend, onOpenCanvas }: ChatPane
     <div className="flex-1 flex flex-col min-w-0">
       <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages.length === 0 ? (
-          <IntentCardFlow onComplete={onSend} />
+          <IntentCardFlow onComplete={(msg) => onSend(msg)} />
         ) : (
           <>
             {messages.map(msg => (

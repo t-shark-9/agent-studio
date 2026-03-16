@@ -1,7 +1,14 @@
 import { motion } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
-import { Bot, User, Layout } from 'lucide-react';
+import { Bot, User, Layout, FileText, ImageIcon } from 'lucide-react';
 import type { ChatMessage as ChatMessageType } from '@/types/chat';
+
+interface FileAttachment {
+  name: string;
+  size: number;
+  type: string;
+  url?: string; // data URL for images, or download URL
+}
 
 interface CanvasData {
   id: string;
@@ -17,7 +24,9 @@ interface ChatMessageProps {
 
 export function ChatMessageBubble({ message, onOpenCanvas }: ChatMessageProps) {
   const isUser = message.role === 'user';
-  const canvas = (message.metadata as Record<string, unknown>)?.canvas as CanvasData | undefined;
+  const meta = message.metadata as Record<string, unknown> | undefined;
+  const canvas = meta?.canvas as CanvasData | undefined;
+  const attachments = (meta?.files as FileAttachment[]) || [];
 
   return (
     <motion.div
@@ -55,6 +64,27 @@ export function ChatMessageBubble({ message, onOpenCanvas }: ChatMessageProps) {
             >
               {message.content}
             </ReactMarkdown>
+          </div>
+        )}
+
+        {/* File attachments */}
+        {attachments.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {attachments.map((file, i) => (
+              <div key={i} className="rounded-lg border border-border bg-secondary/50 overflow-hidden">
+                {file.url && file.type?.startsWith('image/') ? (
+                  <img src={file.url} alt={file.name} className="max-w-[240px] max-h-[180px] object-cover" />
+                ) : (
+                  <div className="flex items-center gap-2 px-3 py-2">
+                    <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-xs font-medium text-foreground truncate">{file.name}</p>
+                      <p className="text-[10px] text-muted-foreground">{(file.size / 1024).toFixed(0)}KB</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
         )}
 

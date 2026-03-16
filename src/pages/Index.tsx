@@ -12,6 +12,7 @@ import { useSessionManager } from '@/hooks/useSessionManager';
 import { detectIntent } from '@/hooks/useIntentDetection';
 import { useAgent } from '@/hooks/useAgent';
 import type { ContextType } from '@/types/chat';
+import type { AttachedFile } from '@/components/MessageComposer';
 
 type ViewMode = 'canvas' | 'chat' | 'code';
 
@@ -48,6 +49,26 @@ const Index = () => {
 
   const { getResponse } = useAgent();
 
+  // Restore canvas when switching sessions — scan messages for the last canvas
+  useEffect(() => {
+    if (!messages.length) {
+      setActiveCanvas(null);
+      return;
+    }
+    // Walk messages backwards to find the most recent canvas
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const meta = messages[i].metadata as Record<string, unknown> | undefined;
+      const canvas = meta?.canvas as CanvasData | undefined;
+      if (canvas?.id) {
+        setActiveCanvas(canvas);
+        if (viewMode === 'canvas') return; // already on canvas view
+        return;
+      }
+    }
+    // No canvas found in this session
+    setActiveCanvas(null);
+  }, [activeSessionId, messages]);
+
   // Listen for postMessage from canvas iframes
   useEffect(() => {
     const handler = (e: MessageEvent) => {
@@ -79,7 +100,7 @@ const Index = () => {
     setViewMode('canvas');
   }, []);
 
-  const handleSend = useCallback(async (content: string) => {
+  const handleSend = useCallback(async (content: string, files?: AttachedFile[]) => {
     let currentSessionId = activeSessionId;
     if (!currentSessionId) {
       const session = await createSession();
@@ -87,7 +108,25 @@ const Index = () => {
       currentSessionId = session.id;
     }
 
-    await addMessage('user', content);
+    // Build metadata with file info
+    const metadata: Record<string, unknown> = {};
+    if (files && files.length > 0) {
+      metadata.files = files.map(f => ({
+        name: f.file.name,
+        size: f.file.size,
+        type: f.file.type,
+        url: f.preview || undefined, // data URL for images
+      }));
+    }
+
+    // Build content with file descriptions
+    let fullContent = content;
+    if (files && files.length > 0) {
+      const fileDescs = files.map(f => `[Attached: ${f.file.name} (${f.file.type}, ${(f.file.size / 1024).toFixed(0)}KB)]`);
+      fullContent = fileDescs.join('\n') + (content ? '\n' + content : '');
+    }
+
+    await addMessage('user', fullContent, Object.keys(metadata).length > 0 ? metadata : undefined);
 
     // Detect intent
     const intent = detectIntent(content);
@@ -105,13 +144,12 @@ const Index = () => {
     // Get AI response from OpenClaw
     setIsLoading(true);
     try {
-      const response = await getResponse(content, contextType, selectedModel);
+      const response = await getResponse(fullContent, contextType, selectedModel);
 
       if (response.type === 'canvas' && response.canvas) {
         await addMessage('assistant', response.content, { canvas: response.canvas });
         setActiveCanvas(response.canvas);
         setViewMode('canvas');
-        // Background: extract template for reuse
         extractTemplate(response.canvas.id);
       } else {
         await addMessage('assistant', response.content);
@@ -124,7 +162,6 @@ const Index = () => {
 
   const handleStartFlow = useCallback((message: string) => {
     handleSend(message);
-    // Switch to chat while we wait for the response (canvas will auto-open)
     setViewMode('chat');
   }, [handleSend]);
 
@@ -167,6 +204,11 @@ const Index = () => {
     setViewMode('canvas');
   }, [createSession]);
 
+  const handleSelectSession = useCallback((id: string) => {
+    setActiveSessionId(id);
+    // Canvas will be restored by the useEffect above when messages load
+  }, [setActiveSessionId]);
+
   const VIEW_TABS: { mode: ViewMode; icon: React.ElementType; label: string }[] = [
     { mode: 'canvas', icon: Layout, label: 'Canvas' },
     { mode: 'chat', icon: MessageSquare, label: 'Chat' },
@@ -189,7 +231,7 @@ const Index = () => {
           activeSessionId={activeSessionId}
           collapsed={railCollapsed}
           onToggleCollapse={() => setRailCollapsed(c => !c)}
-          onSelectSession={(id) => { setActiveSessionId(id); setActiveCanvas(null); }}
+          onSelectSession={handleSelectSession}
           onNewSession={handleNewSession}
           onDeleteSession={deleteSession}
         />
