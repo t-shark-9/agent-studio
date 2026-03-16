@@ -8,6 +8,7 @@ import { CanvasHome, refreshTemplateCache } from '@/components/CanvasHome';
 import { CanvasEmbed } from '@/components/CanvasEmbed';
 import { CodeView } from '@/components/CodeView';
 import { FloatingChat } from '@/components/FloatingChat';
+import { WelcomeScreen } from '@/components/WelcomeScreen';
 import { AuthModal } from '@/components/AuthModal';
 import { useSessionManager } from '@/hooks/useSessionManager';
 import { detectIntent } from '@/hooks/useIntentDetection';
@@ -29,7 +30,7 @@ interface CanvasData {
 const Index = () => {
   const [isEphemeral, setIsEphemeral] = useState(false);
   const [showAuth, setShowAuth] = useState(false);
-  const [railCollapsed, setRailCollapsed] = useState(false);
+  const [railCollapsed, setRailCollapsed] = useState(true);
   const [selectedModel, setSelectedModel] = useState('claude-sonnet-4.6');
   const [activeCanvas, setActiveCanvas] = useState<CanvasData | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>('canvas');
@@ -239,88 +240,95 @@ const Index = () => {
 
         {/* Main content area */}
         <div className="flex-1 flex flex-col min-w-0">
-          {/* View toggle bar */}
-          <div className="h-10 border-b border-border flex items-center px-3 gap-1 shrink-0 bg-card/50">
-            {VIEW_TABS.map(tab => (
-              <button
-                key={tab.mode}
-                onClick={() => setViewMode(tab.mode)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-                  viewMode === tab.mode
-                    ? 'bg-primary text-primary-foreground shadow-sm'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
-                }`}
-              >
-                <tab.icon className="h-3.5 w-3.5" />
-                {tab.label}
-              </button>
-            ))}
+          {/* Welcome screen when no session is active */}
+          {!activeSessionId && messages.length === 0 ? (
+            <WelcomeScreen onSend={handleSend} />
+          ) : (
+            <>
+              {/* View toggle bar */}
+              <div className="h-10 border-b border-border flex items-center px-3 gap-1 shrink-0 bg-card/50">
+                {VIEW_TABS.map(tab => (
+                  <button
+                    key={tab.mode}
+                    onClick={() => setViewMode(tab.mode)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                      viewMode === tab.mode
+                        ? 'bg-primary text-primary-foreground shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
+                    }`}
+                  >
+                    <tab.icon className="h-3.5 w-3.5" />
+                    {tab.label}
+                  </button>
+                ))}
 
-            {activeCanvas && (
-              <div className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground">
-                <Sparkles className="h-3 w-3 text-primary" />
-                <span className="font-medium">{activeCanvas.title}</span>
+                {activeCanvas && (
+                  <div className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <Sparkles className="h-3 w-3 text-primary" />
+                    <span className="font-medium">{activeCanvas.title}</span>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
 
-          {/* View content */}
-          <div className="flex-1 min-h-0">
-            <AnimatePresence mode="wait">
-              {viewMode === 'canvas' && (
-                <motion.div
-                  key="canvas"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.15 }}
-                  className="h-full relative"
-                >
-                  {activeCanvas ? (
-                    <CanvasEmbed canvasId={activeCanvas.id} onCanvasAction={handleCanvasAction} />
-                  ) : (
-                    <CanvasHome onStartFlow={handleStartFlow} onUseTemplate={handleUseTemplate} />
+              {/* View content */}
+              <div className="flex-1 min-h-0">
+                <AnimatePresence mode="wait">
+                  {viewMode === 'canvas' && (
+                    <motion.div
+                      key="canvas"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      transition={{ duration: 0.15 }}
+                      className="h-full relative"
+                    >
+                      {activeCanvas ? (
+                        <CanvasEmbed canvasId={activeCanvas.id} onCanvasAction={handleCanvasAction} />
+                      ) : (
+                        <CanvasHome onStartFlow={handleStartFlow} onUseTemplate={handleUseTemplate} />
+                      )}
+                      <FloatingChat
+                        messages={messages}
+                        isLoading={isLoading}
+                        onSend={handleSend}
+                      />
+                    </motion.div>
                   )}
-                  <FloatingChat
-                    messages={messages}
-                    isLoading={isLoading}
-                    onSend={handleSend}
-                  />
-                </motion.div>
-              )}
 
-              {viewMode === 'chat' && (
-                <motion.div
-                  key="chat"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.15 }}
-                  className="h-full"
-                >
-                  <ChatPane
-                    messages={messages}
-                    isLoading={isLoading}
-                    onSend={handleSend}
-                    onOpenCanvas={handleOpenCanvas}
-                  />
-                </motion.div>
-              )}
+                  {viewMode === 'chat' && (
+                    <motion.div
+                      key="chat"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      transition={{ duration: 0.15 }}
+                      className="h-full"
+                    >
+                      <ChatPane
+                        messages={messages}
+                        isLoading={isLoading}
+                        onSend={handleSend}
+                        onOpenCanvas={handleOpenCanvas}
+                      />
+                    </motion.div>
+                  )}
 
-              {viewMode === 'code' && (
-                <motion.div
-                  key="code"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.15 }}
-                  className="h-full"
-                >
-                  <CodeView canvasId={activeCanvas?.id || null} />
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
+                  {viewMode === 'code' && (
+                    <motion.div
+                      key="code"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      transition={{ duration: 0.15 }}
+                      className="h-full"
+                    >
+                      <CodeView canvasId={activeCanvas?.id || null} />
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            </>
+          )}
         </div>
       </div>
 
