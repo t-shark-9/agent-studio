@@ -9,88 +9,59 @@ interface Setting {
   key: string;
   label: string;
   description: string;
-  type: 'toggle' | 'select' | 'text';
-  defaultValue: boolean | string;
-  htmlPatch?: string;
+  htmlPatch: string;
+  enabled: boolean;
+  createdAt: number;
 }
 
 interface CanvasSettingsProps {
   canvasId: string | null;
-  templateId?: string | null;
+  /** Bumped each time a new setting is created via edit chat */
+  settingsVersion?: number;
 }
 
-export function CanvasSettings({ canvasId, templateId }: CanvasSettingsProps) {
+export function CanvasSettings({ canvasId, settingsVersion }: CanvasSettingsProps) {
   const [settings, setSettings] = useState<Setting[]>([]);
-  const [activeToggles, setActiveToggles] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(false);
+  const [toggling, setToggling] = useState<string | null>(null);
 
   const fetchSettings = useCallback(async () => {
-    // Settings come from the template, not the canvas instance
-    const id = templateId;
-    if (!id) return;
+    if (!canvasId) return;
     setLoading(true);
     try {
-      const res = await fetch(`${CANVAS_URL}/api/templates/${id}/settings`);
+      const res = await fetch(`${CANVAS_URL}/api/canvas/${canvasId}/settings`);
       if (res.ok) {
         const data = await res.json();
-        const list: Setting[] = data.settings || [];
-        setSettings(list);
-        // Initialize toggles from defaults
-        const defaults: Record<string, boolean> = {};
-        for (const s of list) {
-          defaults[s.key] = typeof s.defaultValue === 'boolean' ? s.defaultValue : false;
-        }
-        setActiveToggles(defaults);
+        setSettings(data.settings || []);
       }
     } catch {
       // ignore
     }
     setLoading(false);
-  }, [templateId]);
+  }, [canvasId]);
 
   useEffect(() => {
     fetchSettings();
-  }, [fetchSettings]);
+  }, [fetchSettings, settingsVersion]);
 
   const handleToggle = async (key: string) => {
-    const newValue = !activeToggles[key];
-    setActiveToggles(prev => ({ ...prev, [key]: newValue }));
-
-    // Re-instantiate the canvas with updated settings
-    if (!templateId || !canvasId) return;
+    if (!canvasId) return;
+    setToggling(key);
     try {
-      // Get the setting's HTML patch and apply/remove it
-      const setting = settings.find(s => s.key === key);
-      if (!setting?.htmlPatch) return;
-
-      // Fetch current canvas HTML
-      const srcRes = await fetch(`${CANVAS_URL}/api/canvas/${canvasId}/source`);
-      if (!srcRes.ok) return;
-      const { html } = await srcRes.json();
-
-      let newHtml: string;
-      if (newValue) {
-        // Inject patch before </body> or at end
-        const insertPoint = html.lastIndexOf('</body>');
-        if (insertPoint >= 0) {
-          newHtml = html.slice(0, insertPoint) + setting.htmlPatch + html.slice(insertPoint);
-        } else {
-          newHtml = html + setting.htmlPatch;
-        }
-      } else {
-        // Remove the patch
-        newHtml = html.replace(setting.htmlPatch, '');
-      }
-
-      await fetch(`${CANVAS_URL}/api/canvas/${canvasId}`, {
+      const res = await fetch(`${CANVAS_URL}/api/canvas/${canvasId}/settings/${key}/toggle`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ html: newHtml }),
       });
+      if (res.ok) {
+        const data = await res.json();
+        setSettings(prev => prev.map(s =>
+          s.key === key ? { ...s, enabled: data.setting.enabled } : s
+        ));
+      }
     } catch {
-      // Revert on failure
-      setActiveToggles(prev => ({ ...prev, [key]: !newValue }));
+      // ignore
     }
+    setToggling(null);
   };
 
   if (!canvasId) {
@@ -127,7 +98,7 @@ export function CanvasSettings({ canvasId, templateId }: CanvasSettingsProps) {
             <Settings className="h-8 w-8 mx-auto mb-3 text-muted-foreground/30" />
             <p className="text-xs text-muted-foreground">No settings yet.</p>
             <p className="text-[10px] text-muted-foreground/60 mt-1">
-              Ask Agent Studio to change this canvas — each change becomes a toggleable setting.
+              Use the Chat panel to edit this canvas — each change becomes a toggleable setting here.
             </p>
           </div>
         ) : (
@@ -145,11 +116,12 @@ export function CanvasSettings({ canvasId, templateId }: CanvasSettingsProps) {
               <button
                 onClick={() => handleToggle(setting.key)}
                 className="shrink-0"
+                disabled={toggling === setting.key}
               >
-                {activeToggles[setting.key] ? (
-                  <ToggleRight className="h-6 w-6 text-primary" />
+                {setting.enabled ? (
+                  <ToggleRight className={`h-6 w-6 text-primary ${toggling === setting.key ? 'opacity-50' : ''}`} />
                 ) : (
-                  <ToggleLeft className="h-6 w-6 text-muted-foreground" />
+                  <ToggleLeft className={`h-6 w-6 text-muted-foreground ${toggling === setting.key ? 'opacity-50' : ''}`} />
                 )}
               </button>
             </div>

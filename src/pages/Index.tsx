@@ -49,41 +49,44 @@ const Index = () => {
     setActiveSessionId,
     createSession,
     addMessage,
+    updateMessageMeta,
     updateSessionContext,
     deleteSession,
+    setMessages,
   } = useSessionManager();
 
-  const { streamResponse } = useAgent();
+  const { streamResponse, streamEdit } = useAgent();
+  const [settingsVersion, setSettingsVersion] = useState(0);
 
   // Show welcome content when no active session
   const showWelcome = !activeSessionId && messages.length === 0 && !activeCanvas;
 
-  // Restore canvas when switching sessions
-  useEffect(() => {
-    // Don't wipe canvas while showing a template via srcdoc
-    if (activeHtml) return;
+  // Canvas restore: only runs when explicitly switching to an existing session via sidebar
+  const [restoreSessionId, setRestoreSessionId] = useState<string | null>(null);
 
-    if (!messages.length) {
-      setActiveCanvas(null);
-      return;
-    }
+  useEffect(() => {
+    if (!restoreSessionId || restoreSessionId !== activeSessionId) return;
+    if (!messages.length) return; // Messages still loading from Supabase
+
+    setRestoreSessionId(null);
     for (let i = messages.length - 1; i >= 0; i--) {
       const meta = messages[i].metadata as Record<string, unknown> | undefined;
       const canvas = meta?.canvas as CanvasData | undefined;
       if (canvas?.id) {
         setActiveCanvas(canvas);
+        setRailCollapsed(false);
         return;
       }
     }
-    setActiveCanvas(null);
-  }, [activeSessionId, messages, activeHtml]);
+    // Session has messages but no canvas — that's fine
+  }, [restoreSessionId, activeSessionId, messages]);
 
-  // Listen for postMessage from canvas iframes
+  // Listen for postMessage from canvas iframes — just log, don't call AI
+  // Canvas buttons already have their own JS handlers
   useEffect(() => {
     const handler = (e: MessageEvent) => {
       if (e.data?.type === 'canvas-action') {
-        const actionText = `[Selected: ${e.data.action}] ${JSON.stringify(e.data.data)}`;
-        handleSend(actionText);
+        console.log('[Canvas Action]', e.data.action, e.data.data);
       }
     };
     window.addEventListener('message', handler);
@@ -127,7 +130,7 @@ const Index = () => {
       fullContent = fileDescs.join('\n') + (content ? '\n' + content : '');
     }
 
-    await addMessage('user', fullContent, Object.keys(metadata).length > 0 ? metadata : undefined);
+    await addMessage('user', fullContent, Object.keys(metadata).length > 0 ? metadata : undefined, currentSessionId);
 
     const intent = detectIntent(content);
     let contextType: ContextType = activeSession?.context_type as ContextType || 'chat';
@@ -171,16 +174,16 @@ const Index = () => {
 
       setStreamingHtml(null);
       if (response.type === 'canvas' && response.canvas) {
-        await addMessage('assistant', response.content, { canvas: response.canvas });
+        await addMessage('assistant', response.content, { canvas: response.canvas }, currentSessionId);
         setActiveCanvas(response.canvas);
         setActiveHtml(null);
         setRailCollapsed(false);
         extractTemplate(response.canvas.id);
       } else {
-        await addMessage('assistant', response.content);
+        await addMessage('assistant', response.content, undefined, currentSessionId);
       }
     } catch {
-      await addMessage('assistant', 'Sorry, something went wrong. Please try again.');
+      await addMessage('assistant', 'Sorry, something went wrong. Please try again.', undefined, currentSessionId);
       setStreamingHtml(null);
     }
     setIsLoading(false);
@@ -203,8 +206,8 @@ const Index = () => {
       currentSessionId = session.id;
     }
 
-    await addMessage('user', `Use template: ${tpl.name}`);
-    await addMessage('assistant', `Here's your ${tpl.name}. You can interact with it or ask me to make changes.`);
+    await addMessage('user', `Use template: ${tpl.name}`, undefined, currentSessionId);
+    const assistantMsg = await addMessage('assistant', `Here's your ${tpl.name}. You can interact with it or ask me to make changes.`, undefined, currentSessionId);
 
     // Register with canvas server in background (enables SSE live updates + code editing)
     try {
@@ -224,16 +227,71 @@ const Index = () => {
         };
         setActiveCanvas(canvas);
         setActiveHtml(null); // switch to server-backed iframe
+        // Save canvas metadata so session restore works when switching back
+        if (assistantMsg) {
+          updateMessageMeta(assistantMsg.id, { canvas });
+        }
       }
     } catch {
       // Keep showing srcdoc version — still works fine
     }
-  }, [activeSessionId, createSession, addMessage]);
+  }, [activeSessionId, createSession, addMessage, updateMessageMeta]);
 
-  const handleCanvasAction = useCallback((action: string, payload: Record<string, unknown>) => {
-    const summary = payload.summary || payload.label || action;
-    handleSend(`[Canvas] ${summary}`);
-  }, [handleSend]);
+  // Canvas actions are handled by the canvas's own JS — no AI call needed
+  const handleCanvasAction = useCallback((_action: string, _payload: Record<string, unknown>) => {
+    // Intentionally no-op: canvas handles its own interactions
+  }, []);
+
+  // Edit the current canvas — used by overlay chat (doesn't create a new canvas)
+  const handleEditSend = useCallback(async (content: string) => {
+    if (!activeCanvas?.id) return;
+
+    let currentSessionId = activeSessionId;
+    if (!currentSessionId) {
+      const session = await createSession();
+      if (!session) return;
+      currentSessionId = session.id;
+    }
+
+    await addMessage('user', content, undefined, currentSessionId);
+    setIsLoading(true);
+    setStreamingHtml(null);
+
+    let fullStream = '';
+    try {
+      const result = await streamEdit(
+        content,
+        '', // currentHtml is fetched inside streamEdit from canvas server
+        activeCanvas.id,
+        selectedModel,
+        [],
+        {
+          onChunk: (chunk) => {
+            fullStream += chunk;
+            // Extract content inside <canvas-patch> for the code panel
+            const tagEnd = fullStream.indexOf('>', fullStream.indexOf('<canvas-patch'));
+            if (tagEnd >= 0) {
+              const patchSoFar = fullStream.slice(tagEnd + 1).replace(/<\/canvas-patch>[\s\S]*$/, '');
+              setStreamingHtml(patchSoFar);
+            }
+          },
+        }
+      );
+
+      setStreamingHtml(null);
+
+      if (result.patch) {
+        await addMessage('assistant', result.content, { edit: { label: result.label, description: result.description } }, currentSessionId);
+        setSettingsVersion(v => v + 1); // Trigger settings panel refresh
+      } else {
+        await addMessage('assistant', result.content, undefined, currentSessionId);
+      }
+    } catch {
+      await addMessage('assistant', 'Sorry, something went wrong with the edit.', undefined, currentSessionId);
+      setStreamingHtml(null);
+    }
+    setIsLoading(false);
+  }, [activeCanvas, activeSessionId, addMessage, createSession, streamEdit, setIsLoading, selectedModel]);
 
   const handleNewSession = useCallback(() => {
     setActiveSessionId(null);
@@ -245,8 +303,12 @@ const Index = () => {
 
   const handleSelectSession = useCallback((id: string) => {
     setActiveSessionId(id);
+    setActiveCanvas(null);
+    setActiveHtml(null);
+    setMessages([]);
     setOverlayMode('none');
-  }, [setActiveSessionId]);
+    setRestoreSessionId(id); // Trigger canvas restore after messages load
+  }, [setActiveSessionId, setMessages]);
 
   const toggleOverlay = useCallback((mode: OverlayMode) => {
     setOverlayMode(prev => prev === mode ? 'none' : mode);
@@ -431,7 +493,7 @@ const Index = () => {
                       <div className="shrink-0 border-t border-border p-2">
                         <div className="flex gap-2 items-end">
                           <textarea
-                            placeholder="Type a message..."
+                            placeholder="Edit this canvas..."
                             className="flex-1 resize-none rounded-lg bg-secondary border border-border px-3 py-2 text-xs min-h-[36px] max-h-[80px] focus:outline-none focus:ring-1 focus:ring-primary"
                             rows={1}
                             onKeyDown={e => {
@@ -439,7 +501,7 @@ const Index = () => {
                                 e.preventDefault();
                                 const target = e.target as HTMLTextAreaElement;
                                 if (target.value.trim()) {
-                                  handleSend(target.value.trim());
+                                  handleEditSend(target.value.trim());
                                   target.value = '';
                                 }
                               }
@@ -453,7 +515,7 @@ const Index = () => {
                     <CodeView canvasId={activeCanvas.id || null} streamingHtml={streamingHtml} />
                   )}
                   {overlayMode === 'settings' && (
-                    <CanvasSettings canvasId={activeCanvas.id} templateId={activeCanvas.templateId} />
+                    <CanvasSettings canvasId={activeCanvas.id} settingsVersion={settingsVersion} />
                   )}
                 </motion.div>
               )}

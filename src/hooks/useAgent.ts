@@ -22,6 +22,13 @@ export interface AgentResponse {
   canvas?: CanvasData;
 }
 
+export interface EditResponse {
+  content: string;
+  patch: string;
+  label: string;
+  description: string;
+}
+
 interface StreamCallbacks {
   onChunk?: (chunk: string) => void;
   onComplete?: (response: AgentResponse) => void;
@@ -272,6 +279,156 @@ export function useAgent() {
     }
   }, []);
 
+  const streamEdit = useCallback(async (
+    userMessage: string,
+    currentHtml: string,
+    canvasId: string,
+    model: string,
+    history: Message[] = [],
+    callbacks?: { onChunk?: (chunk: string) => void }
+  ): Promise<EditResponse> => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    abortControllerRef.current = new AbortController();
+
+    // Fetch current HTML from canvas server if not provided
+    let html = currentHtml;
+    if (!html) {
+      try {
+        const srcRes = await fetch(`${CANVAS_URL}/api/canvas/${canvasId}/source`);
+        if (srcRes.ok) {
+          const data = await srcRes.json();
+          html = data.html || '';
+        }
+      } catch { /* proceed with empty */ }
+    }
+
+    const editSystemPrompt = `You are editing an existing interactive UI canvas. The user wants to modify the current experience.
+
+CURRENT CANVAS HTML:
+---
+${html}
+---
+
+OUTPUT FORMAT:
+Wrap your changes in a <canvas-patch> tag with a label and description attribute:
+
+<canvas-patch label="Short Name" description="What this change does">
+<!-- Your patch: CSS, JS, and/or HTML -->
+</canvas-patch>
+
+After the patch block, write a brief message to the user explaining what you changed.
+
+PATCH RULES:
+1. Your patch gets INJECTED before </body> in the existing HTML — it must be self-contained
+2. Use <style> blocks to add or override CSS (use specific selectors, !important if needed)
+3. Use <script> blocks wrapped in an IIFE to modify existing DOM or add behavior
+4. Add new HTML elements if needed (they appear at the bottom of the page by default — use CSS position to place them)
+5. To hide existing elements: .selector { display: none !important; }
+6. To modify existing text/content: use JS with document.querySelector
+7. Keep patches independent — each patch should work on its own
+8. NEVER reproduce the entire page. Output ONLY the additive patch.
+9. Patches should be small and focused on the user's request
+10. When adding interactive elements, use canvasAction('action_name', { ...data }) for callbacks`;
+
+    const messages: Message[] = [
+      { role: 'system', content: editSystemPrompt },
+      ...history,
+      { role: 'user', content: userMessage },
+    ];
+
+    try {
+      const response = await fetch(`${API_URL}/chat/completions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages, model, stream: true }),
+        signal: abortControllerRef.current.signal,
+      });
+
+      if (!response.ok) throw new Error(`API error: ${response.status}`);
+
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error('No response body');
+
+      const decoder = new TextDecoder();
+      let fullResponse = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value);
+        for (const line of chunk.split('\n')) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6);
+            if (data === '[DONE]') continue;
+            try {
+              const parsed = JSON.parse(data);
+              const content = parsed.choices?.[0]?.delta?.content;
+              if (content) {
+                fullResponse += content;
+                callbacks?.onChunk?.(content);
+              }
+            } catch { /* ignore */ }
+          }
+        }
+      }
+
+      // Extract the patch
+      const patchMatch = fullResponse.match(
+        /<canvas-patch\s+label="([^"]*)"(?:\s+description="([^"]*)")?\s*>([\s\S]*?)<\/canvas-patch>/
+      );
+
+      if (patchMatch) {
+        const [, label, description, patch] = patchMatch;
+        const trimmedPatch = patch.trim();
+
+        // Apply patch to canvas immediately
+        const srcRes = await fetch(`${CANVAS_URL}/api/canvas/${canvasId}/source`);
+        if (srcRes.ok) {
+          const { html } = await srcRes.json();
+          const insertPoint = html.lastIndexOf('</body>');
+          const newHtml = insertPoint >= 0
+            ? html.slice(0, insertPoint) + trimmedPatch + html.slice(insertPoint)
+            : html + trimmedPatch;
+          await updateCanvas(canvasId, newHtml);
+        }
+
+        // Create a setting on the canvas server
+        await fetch(`${CANVAS_URL}/api/canvas/${canvasId}/settings`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            key: `edit-${Date.now()}`,
+            label,
+            description: description || '',
+            htmlPatch: trimmedPatch,
+            enabled: true,
+          }),
+        });
+
+        const textParts = fullResponse
+          .replace(/<canvas-patch[\s\S]*?<\/canvas-patch>/, '')
+          .trim();
+
+        return {
+          content: textParts || `Applied: ${label}`,
+          patch: trimmedPatch,
+          label,
+          description: description || '',
+        };
+      }
+
+      // No patch found — return as plain text
+      return { content: fullResponse, patch: '', label: '', description: '' };
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        return { content: '', patch: '', label: '', description: '' };
+      }
+      throw error;
+    }
+  }, []);
+
   const abort = useCallback(() => {
     abortControllerRef.current?.abort();
   }, []);
@@ -286,5 +443,5 @@ export function useAgent() {
     return streamResponse(message, contextType, model, history, { onCanvasStart });
   }, [streamResponse]);
 
-  return { getResponse, streamResponse, abort };
+  return { getResponse, streamResponse, streamEdit, abort };
 }

@@ -127,14 +127,16 @@ export function useSessionManager() {
   const addMessage = useCallback(async (
     role: 'user' | 'assistant' | 'system',
     content: string,
-    metadata?: Record<string, unknown>
+    metadata?: Record<string, unknown>,
+    overrideSessionId?: string
   ) => {
-    if (!activeSessionId) return null;
+    const sid = overrideSessionId || activeSessionId;
+    if (!sid) return null;
 
     const { data, error } = await supabase
       .from('chat_messages')
       .insert([{
-        session_id: activeSessionId,
+        session_id: sid,
         role,
         content,
         metadata: (metadata || {}) as unknown as Record<string, never>,
@@ -148,7 +150,7 @@ export function useSessionManager() {
         const updated = [...prev, msg];
         // Auto-title on first user message
         if (role === 'user' && updated.filter(m => m.role === 'user').length === 1) {
-          autoTitleSession(activeSessionId, content);
+          autoTitleSession(sid, content);
         }
         return updated;
       });
@@ -156,6 +158,15 @@ export function useSessionManager() {
     }
     return null;
   }, [activeSessionId, autoTitleSession]);
+
+  const updateMessageMeta = useCallback(async (messageId: string, metadata: Record<string, unknown>) => {
+    await supabase.from('chat_messages').update({
+      metadata: metadata as unknown as Record<string, never>,
+    }).eq('id', messageId);
+    setMessages(prev => prev.map(m =>
+      m.id === messageId ? { ...m, metadata: metadata as unknown as Record<string, never> } : m
+    ));
+  }, []);
 
   const updateSessionContext = useCallback(async (sessionId: string, contextType: ContextType, title?: string) => {
     const updates: Record<string, unknown> = { context_type: contextType };
@@ -197,6 +208,7 @@ export function useSessionManager() {
     setMessages,
     createSession,
     addMessage,
+    updateMessageMeta,
     updateSessionContext,
     deleteSession,
     loadSessions,
