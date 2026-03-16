@@ -1,7 +1,7 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { motion } from 'framer-motion';
 
-const CANVAS_SERVER = 'http://72.62.154.89:4200';
+const CANVAS_SERVER = import.meta.env.VITE_CANVAS_SERVER || 'http://72.62.154.89:4200';
 
 interface CanvasEmbedProps {
   canvasId: string;
@@ -12,13 +12,13 @@ export function CanvasEmbed({ canvasId, onCanvasAction }: CanvasEmbedProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
   const handleMessage = useCallback((event: MessageEvent) => {
-    // Only accept messages from the Canvas Server
-    if (event.origin !== CANVAS_SERVER) return;
+    const { type, action, data, payload } = event.data || {};
 
-    const { type, action, payload } = event.data || {};
-
+    if (type === 'canvas-action' && action) {
+      onCanvasAction(action, data || payload || {});
+    }
     if (type === 'canvasAction' && action) {
-      onCanvasAction(action, payload || {});
+      onCanvasAction(action, payload || data || {});
     }
   }, [onCanvasAction]);
 
