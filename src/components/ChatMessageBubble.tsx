@@ -3,14 +3,21 @@ import ReactMarkdown from 'react-markdown';
 import { Bot, User, Layout } from 'lucide-react';
 import type { ChatMessage as ChatMessageType } from '@/types/chat';
 
+interface CanvasData {
+  id: string;
+  url: string;
+  embedUrl: string;
+  title: string;
+}
+
 interface ChatMessageProps {
   message: ChatMessageType;
-  onOpenCanvas?: (canvas: { id: string; url: string; embedUrl: string; title: string }) => void;
+  onOpenCanvas?: (canvas: CanvasData) => void;
 }
 
 export function ChatMessageBubble({ message, onOpenCanvas }: ChatMessageProps) {
   const isUser = message.role === 'user';
-  const canvas = message.metadata?.canvas as { id: string; url: string; embedUrl: string; title: string } | undefined;
+  const canvas = (message.metadata as Record<string, unknown>)?.canvas as CanvasData | undefined;
 
   return (
     <motion.div

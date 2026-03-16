@@ -1,29 +1,54 @@
 import { useCallback } from 'react';
 import type { ContextType } from '@/types/chat';
 
-const MOCK_RESPONSES: Record<string, string[]> = {
+interface AgentResponse {
+  content: string;
+  canvasId?: string;
+}
+
+const MOCK_RESPONSES: Record<string, AgentResponse[]> = {
   trip: [
-    "I'd love to help you plan your trip! Let me put together an itinerary. I'm opening the trip planner on the right panel so we can work on the details together.\n\nHere's what I'm thinking:\n- **Day 1**: Arrival and city exploration\n- **Day 2**: Key attractions and cultural sites\n- **Day 3**: Local food tour and hidden gems\n\nWould you like to adjust the dates or budget?",
-    "Great choice of destination! I've loaded up the itinerary builder. You can customize dates, budget, and preferences in the panel on the right.\n\nShall I also look into flights and accommodation options?",
+    {
+      content: "I've set up an interactive trip planner for you! Check out the canvas panel on the right to explore destinations, pick dates, and build your itinerary.",
+      canvasId: 'trip-planner-demo',
+    },
+    {
+      content: "Great choice! I've loaded the trip planning canvas. You can browse flights, hotels, and activities right in the panel.",
+      canvasId: 'trip-explore-demo',
+    },
   ],
   booking: [
-    "I'll help you book a restaurant! I've opened the booking form on the right. Here are some top-rated options:\n\n🍽️ **The Golden Fork** - Fine dining, $$$$\n🍽️ **Casa Bella** - Italian, $$$\n🍽️ **Street Bites** - Casual, $$\n\nWhich one catches your eye? You can also fill in your preferences in the booking panel.",
-    "Let me pull up the reservation system for you. I've opened the booking widget — just select your preferred date, time, and party size.",
+    {
+      content: "I've opened the restaurant booking experience for you! Browse restaurants, pick a date, and reserve your table in the canvas panel.",
+      canvasId: 'booking-restaurants-demo',
+    },
+    {
+      content: "Let me pull up some great options! Check the canvas panel to browse restaurants and make a reservation.",
+      canvasId: 'booking-browse-demo',
+    },
   ],
   media: [
-    "I can generate that for you! I've opened the media creation panel on the right. Here's what I can create:\n\n🎨 **Image Generation** - Photorealistic or artistic styles\n📹 **Video Creation** - Short clips and animations\n\nDescribe what you'd like and I'll get started!",
-    "Creative time! I've loaded the media generator. You can describe the image or video you want, choose a style, and I'll generate it for you.",
+    {
+      content: "The media studio is ready! Use the canvas panel to describe your vision, pick a style, and generate your creation.",
+      canvasId: 'media-studio-demo',
+    },
+    {
+      content: "Creative time! I've opened the media generator canvas. Describe what you'd like and choose a style.",
+      canvasId: 'media-create-demo',
+    },
   ],
   chat: [
-    "I'm your AI agent assistant. I can help you with:\n\n🗺️ **Trip Planning** - Say \"Plan a trip to Paris\"\n🍽️ **Restaurant Booking** - Say \"Book a restaurant\"\n🎨 **Media Generation** - Say \"Create an image of...\"\n\nOr just chat with me about anything!",
-    "Hello! I'm here to help. I can plan trips, book restaurants, generate images/videos, and much more. What would you like to do?",
-    "That's interesting! Let me think about that...\n\nI can assist with planning, booking, creating media, or just having a conversation. What's on your mind?",
+    {
+      content: "I'm your AI agent assistant. I can help you with:\n\n🗺️ **Trip Planning** - Say \"Plan a trip to Paris\"\n🍽️ **Restaurant Booking** - Say \"Book a restaurant\"\n🎨 **Media Generation** - Say \"Create an image of...\"\n\nOr just chat with me about anything!",
+    },
+    {
+      content: "Hello! I'm here to help. I can plan trips, book restaurants, generate images/videos, and much more. What would you like to do?",
+    },
   ],
 };
 
 export function useMockAgent() {
-  const getResponse = useCallback(async (message: string, contextType: ContextType): Promise<string> => {
-    // Simulate network delay
+  const getResponse = useCallback(async (message: string, contextType: ContextType): Promise<AgentResponse> => {
     await new Promise(resolve => setTimeout(resolve, 800 + Math.random() * 1200));
     
     const responses = MOCK_RESPONSES[contextType] || MOCK_RESPONSES.chat;

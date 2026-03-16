@@ -4,11 +4,18 @@ import { MessageComposer } from './MessageComposer';
 import { IntentCardFlow } from './IntentCardFlow';
 import type { ChatMessage } from '@/types/chat';
 
+interface CanvasData {
+  id: string;
+  url: string;
+  embedUrl: string;
+  title: string;
+}
+
 interface ChatPaneProps {
   messages: ChatMessage[];
   isLoading: boolean;
   onSend: (message: string) => void;
-  onOpenCanvas?: (canvas: { id: string; url: string; embedUrl: string; title: string }) => void;
+  onOpenCanvas?: (canvas: CanvasData) => void;
 }
 
 export function ChatPane({ messages, isLoading, onSend, onOpenCanvas }: ChatPaneProps) {
@@ -22,7 +29,6 @@ export function ChatPane({ messages, isLoading, onSend, onOpenCanvas }: ChatPane
 
   return (
     <div className="flex-1 flex flex-col min-w-0">
-      {/* Messages */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages.length === 0 ? (
           <IntentCardFlow onComplete={onSend} />
@@ -36,7 +42,6 @@ export function ChatPane({ messages, isLoading, onSend, onOpenCanvas }: ChatPane
         )}
       </div>
 
-      {/* Composer */}
       <MessageComposer onSend={onSend} disabled={isLoading} />
     </div>
   );

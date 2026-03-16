@@ -4,7 +4,6 @@ import { StatusBar } from '@/components/StatusBar';
 import { TaskRail } from '@/components/TaskRail';
 import { ChatPane } from '@/components/ChatPane';
 import { ContextPanel } from '@/components/ContextPanel';
-import { CanvasPanel } from '@/components/CanvasPanel';
 import { AuthModal } from '@/components/AuthModal';
 import { useSessionManager } from '@/hooks/useSessionManager';
 import { detectIntent } from '@/hooks/useIntentDetection';
@@ -22,7 +21,7 @@ const Index = () => {
   const [isEphemeral, setIsEphemeral] = useState(false);
   const [showAuth, setShowAuth] = useState(false);
   const [railCollapsed, setRailCollapsed] = useState(false);
-  const [contextCollapsed, setContextCollapsed] = useState(true);
+  const [contextCollapsed, setContextCollapsed] = useState(false);
   const [selectedModel, setSelectedModel] = useState('claude-sonnet-4.6');
   const [activeCanvas, setActiveCanvas] = useState<CanvasData | null>(null);
 
@@ -54,6 +53,11 @@ const Index = () => {
     return () => window.removeEventListener('message', handler);
   }, []);
 
+  const handleOpenCanvas = useCallback((canvas: CanvasData) => {
+    setActiveCanvas(canvas);
+    setContextCollapsed(false);
+  }, []);
+
   const handleSend = useCallback(async (content: string) => {
     let currentSessionId = activeSessionId;
     if (!currentSessionId) {
@@ -83,13 +87,13 @@ const Index = () => {
       const response = await getResponse(content, contextType, selectedModel);
 
       if (response.type === 'canvas' && response.canvas) {
-        // Store canvas reference in message metadata
         await addMessage('assistant', response.content, { canvas: response.canvas });
         setActiveCanvas(response.canvas);
+        setContextCollapsed(false);
       } else {
         await addMessage('assistant', response.content);
       }
-    } catch (err) {
+    } catch {
       await addMessage('assistant', 'Sorry, something went wrong. Please try again.');
     }
     setIsLoading(false);
@@ -109,12 +113,8 @@ const Index = () => {
     const ctx = contextType || 'chat';
     await createSession(titles[ctx], ctx);
     setActiveCanvas(null);
+    if (ctx !== 'chat') setContextCollapsed(false);
   }, [createSession]);
-
-  const handleOpenCanvas = useCallback((canvas: CanvasData) => {
-    setActiveCanvas(canvas);
-    setContextCollapsed(true);
-  }, []);
 
   const currentContextType = (activeSession?.context_type as ContextType) || 'chat';
 
@@ -134,7 +134,7 @@ const Index = () => {
           activeSessionId={activeSessionId}
           collapsed={railCollapsed}
           onToggleCollapse={() => setRailCollapsed(c => !c)}
-          onSelectSession={setActiveSessionId}
+          onSelectSession={(id) => { setActiveSessionId(id); setActiveCanvas(null); }}
           onNewSession={handleNewSession}
           onDeleteSession={deleteSession}
         />
@@ -146,29 +146,13 @@ const Index = () => {
           onOpenCanvas={handleOpenCanvas}
         />
 
-        {/* Show canvas panel when a canvas is active, otherwise show context panel */}
-        <AnimatePresence mode="wait">
-          {activeCanvas ? (
-            <CanvasPanel
-              key="canvas"
-              canvas={activeCanvas}
-              onClose={() => setActiveCanvas(null)}
-              onAction={(action, data) => {
-                handleSend(`[Action: ${action}] ${JSON.stringify(data)}`);
-              }}
-            />
-          ) : (
-            !contextCollapsed && (
-              <ContextPanel
-                key="context"
-                contextType={currentContextType}
-                collapsed={contextCollapsed}
-                onToggleCollapse={() => setContextCollapsed(c => !c)}
-                onAction={handleContextAction}
-              />
-            )
-          )}
-        </AnimatePresence>
+        <ContextPanel
+          contextType={currentContextType}
+          canvasId={activeCanvas?.id || null}
+          collapsed={contextCollapsed}
+          onToggleCollapse={() => setContextCollapsed(c => !c)}
+          onAction={handleContextAction}
+        />
       </div>
 
       <AnimatePresence>
