@@ -8,9 +8,10 @@ interface ChatPaneProps {
   messages: ChatMessage[];
   isLoading: boolean;
   onSend: (message: string) => void;
+  onOpenCanvas?: (canvasId: string) => void;
 }
 
-export function ChatPane({ messages, isLoading, onSend }: ChatPaneProps) {
+export function ChatPane({ messages, isLoading, onSend, onOpenCanvas }: ChatPaneProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -21,21 +22,19 @@ export function ChatPane({ messages, isLoading, onSend }: ChatPaneProps) {
 
   return (
     <div className="flex-1 flex flex-col min-w-0">
-      {/* Messages */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages.length === 0 ? (
           <IntentCardFlow onComplete={onSend} />
         ) : (
           <>
             {messages.map(msg => (
-              <ChatMessageBubble key={msg.id} message={msg} />
+              <ChatMessageBubble key={msg.id} message={msg} onOpenCanvas={onOpenCanvas} />
             ))}
             {isLoading && <TypingIndicator />}
           </>
         )}
       </div>
 
-      {/* Composer */}
       <MessageComposer onSend={onSend} disabled={isLoading} />
     </div>
   );
