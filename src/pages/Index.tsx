@@ -4,7 +4,7 @@ import { MessageSquare, Layout, Code2, Sparkles } from 'lucide-react';
 import { StatusBar } from '@/components/StatusBar';
 import { TaskRail } from '@/components/TaskRail';
 import { ChatPane } from '@/components/ChatPane';
-import { CanvasHome } from '@/components/CanvasHome';
+import { CanvasHome, refreshTemplateCache } from '@/components/CanvasHome';
 import { CanvasEmbed } from '@/components/CanvasEmbed';
 import { CodeView } from '@/components/CodeView';
 import { AuthModal } from '@/components/AuthModal';
@@ -63,11 +63,12 @@ const Index = () => {
   // Background template extraction after canvas is created
   const extractTemplate = useCallback(async (canvasId: string) => {
     try {
-      await fetch(`${CANVAS_URL}/api/templates/extract`, {
+      const res = await fetch(`${CANVAS_URL}/api/templates/extract`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ canvasId }),
       });
+      if (res.ok) refreshTemplateCache();
     } catch {
       // Silent background operation
     }
