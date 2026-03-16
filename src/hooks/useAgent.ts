@@ -26,6 +26,7 @@ interface StreamCallbacks {
   onChunk?: (chunk: string) => void;
   onComplete?: (response: AgentResponse) => void;
   onError?: (error: Error) => void;
+  onCanvasStart?: (canvas: CanvasData) => void;
 }
 
 const CANVAS_SYSTEM_PROMPT = `You are Agent Studio, an AI assistant that creates rich visual experiences instead of plain text responses.
@@ -98,6 +99,18 @@ export function useAgent() {
     }
   };
 
+  const updateCanvas = async (canvasId: string, html: string): Promise<void> => {
+    try {
+      await fetch(`${CANVAS_URL}/api/canvas/${canvasId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ html }),
+      });
+    } catch {
+      // Silent — best effort live update
+    }
+  };
+
   const streamResponse = useCallback(async (
     userMessage: string,
     contextType: ContextType,
@@ -138,6 +151,35 @@ export function useAgent() {
       const decoder = new TextDecoder();
       let fullResponse = '';
 
+      // Live canvas streaming state
+      let liveCanvasId: string | null = null;
+      let liveCanvas: CanvasData | null = null;
+      let canvasTagOpened = false;
+      let canvasTitle = '';
+      let canvasType = '';
+      let lastUpdateLen = 0;
+      let updateTimer: ReturnType<typeof setTimeout> | null = null;
+
+      const flushCanvasUpdate = () => {
+        if (!liveCanvasId || !canvasTagOpened) return;
+        // Extract HTML content after the opening tag
+        const tagEnd = fullResponse.indexOf('>', fullResponse.indexOf('<canvas-ui'));
+        if (tagEnd < 0) return;
+        const htmlSoFar = fullResponse.slice(tagEnd + 1).replace(/<\/canvas-ui>[\s\S]*$/, '');
+        if (htmlSoFar.length > lastUpdateLen + 50) {
+          lastUpdateLen = htmlSoFar.length;
+          updateCanvas(liveCanvasId, htmlSoFar);
+        }
+      };
+
+      const scheduleUpdate = () => {
+        if (updateTimer) return;
+        updateTimer = setTimeout(() => {
+          updateTimer = null;
+          flushCanvasUpdate();
+        }, 120); // throttle to ~8fps
+      };
+
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -155,6 +197,28 @@ export function useAgent() {
               if (content) {
                 fullResponse += content;
                 callbacks?.onChunk?.(content);
+
+                // Detect canvas-ui opening tag — create canvas immediately
+                if (!canvasTagOpened && fullResponse.includes('<canvas-ui')) {
+                  const match = fullResponse.match(/<canvas-ui\s+title="([^"]*)"(?:\s+type="([^"]*)")?\s*>/);
+                  if (match) {
+                    canvasTagOpened = true;
+                    canvasTitle = match[1];
+                    canvasType = match[2] || 'generic';
+                    // Create canvas with loading placeholder
+                    const loadingHtml = `<div style="display:flex;align-items:center;justify-content:center;height:100vh;background:#1a1a2e;color:#eee;font-family:system-ui,sans-serif"><div style="text-align:center"><div style="width:40px;height:40px;border:3px solid #2a2a4a;border-top-color:#e94560;border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 16px"></div><p style="font-size:14px;color:#888">Building your experience...</p></div><style>@keyframes spin{to{transform:rotate(360deg)}}</style></div>`;
+                    liveCanvas = await createCanvas(loadingHtml, canvasTitle, canvasType);
+                    if (liveCanvas) {
+                      liveCanvasId = liveCanvas.id;
+                      callbacks?.onCanvasStart?.(liveCanvas);
+                    }
+                  }
+                }
+
+                // Live-update the canvas as HTML streams in
+                if (canvasTagOpened && liveCanvasId) {
+                  scheduleUpdate();
+                }
               }
             } catch {
               // Ignore parse errors
@@ -163,20 +227,34 @@ export function useAgent() {
         }
       }
 
-      // Check for canvas UI in the response
+      // Clear any pending timer
+      if (updateTimer) {
+        clearTimeout(updateTimer);
+        updateTimer = null;
+      }
+
+      // Check for canvas UI in the final response
       const canvasMatch = fullResponse.match(
         /<canvas-ui\s+title="([^"]*)"(?:\s+type="([^"]*)")?\s*>([\s\S]*?)<\/canvas-ui>/
       );
 
       if (canvasMatch) {
         const [, title, type, html] = canvasMatch;
-        const canvas = await createCanvas(html.trim(), title, type || 'generic');
+        const finalHtml = html.trim();
+
+        // If we already have a live canvas, just do a final update
+        if (liveCanvas && liveCanvasId) {
+          await updateCanvas(liveCanvasId, finalHtml);
+        } else {
+          // Fallback: create canvas now (shouldn't normally happen)
+          liveCanvas = await createCanvas(finalHtml, title, type || 'generic');
+        }
 
         const textBefore = fullResponse.substring(0, fullResponse.indexOf('<canvas-ui')).trim();
         const textAfter = fullResponse.substring(fullResponse.indexOf('</canvas-ui>') + '</canvas-ui>'.length).trim();
         const text = [textBefore, textAfter].filter(Boolean).join('\n\n') || `Here's your ${title}:`;
 
-        const result: AgentResponse = { type: 'canvas', content: text, canvas: canvas || undefined };
+        const result: AgentResponse = { type: 'canvas', content: text, canvas: liveCanvas || undefined };
         callbacks?.onComplete?.(result);
         return result;
       }
@@ -202,9 +280,10 @@ export function useAgent() {
     message: string,
     contextType: ContextType,
     model: string,
-    history: Message[] = []
+    history: Message[] = [],
+    onCanvasStart?: (canvas: CanvasData) => void
   ): Promise<AgentResponse> => {
-    return streamResponse(message, contextType, model, history);
+    return streamResponse(message, contextType, model, history, { onCanvasStart });
   }, [streamResponse]);
 
   return { getResponse, streamResponse, abort };

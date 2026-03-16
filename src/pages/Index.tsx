@@ -50,7 +50,7 @@ const Index = () => {
 
   const { getResponse } = useAgent();
 
-  // Show welcome when no active session
+  // Show welcome content when no active session
   const showWelcome = !activeSessionId && messages.length === 0 && !activeCanvas;
 
   // Restore canvas when switching sessions
@@ -82,7 +82,6 @@ const Index = () => {
     return () => window.removeEventListener('message', handler);
   }, []);
 
-  // Background template extraction
   const extractTemplate = useCallback(async (canvasId: string) => {
     try {
       const res = await fetch(`${CANVAS_URL}/api/templates/extract`, {
@@ -104,7 +103,6 @@ const Index = () => {
       currentSessionId = session.id;
     }
 
-    // Build metadata with file info
     const metadata: Record<string, unknown> = {};
     if (files && files.length > 0) {
       metadata.files = files.map(f => ({
@@ -137,10 +135,21 @@ const Index = () => {
 
     setIsLoading(true);
     try {
-      const response = await getResponse(fullContent, contextType, selectedModel);
+      const response = await getResponse(
+        fullContent,
+        contextType,
+        selectedModel,
+        [],
+        // onCanvasStart — show canvas live as it streams
+        (canvas) => {
+          setActiveCanvas(canvas);
+          setRailCollapsed(false);
+        }
+      );
 
       if (response.type === 'canvas' && response.canvas) {
         await addMessage('assistant', response.content, { canvas: response.canvas });
+        // Canvas was already set by onCanvasStart, but update to final version
         setActiveCanvas(response.canvas);
         setRailCollapsed(false);
         extractTemplate(response.canvas.id);
@@ -234,7 +243,7 @@ const Index = () => {
 
         {/* Main content — single unified area */}
         <div className="flex-1 flex flex-col min-w-0 relative">
-          {/* Canvas title bar + view toggles — only when canvas is active */}
+          {/* Canvas title bar — only when canvas is active */}
           {activeCanvas && (
             <div className="h-10 border-b border-border flex items-center px-3 gap-1 shrink-0 bg-card/50 z-10">
               <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -270,8 +279,9 @@ const Index = () => {
 
           {/* Content area */}
           <div className="flex-1 min-h-0 relative">
+            {/* Background layer: welcome content or canvas */}
             <AnimatePresence mode="wait">
-              {showWelcome ? (
+              {showWelcome && (
                 <motion.div
                   key="welcome"
                   initial={{ opacity: 0 }}
@@ -282,7 +292,9 @@ const Index = () => {
                 >
                   <WelcomeScreen onSend={handleSend} onUseTemplate={handleUseTemplate} />
                 </motion.div>
-              ) : activeCanvas ? (
+              )}
+
+              {activeCanvas && (
                 <motion.div
                   key={`canvas-${activeCanvas.id}`}
                   initial={{ opacity: 0 }}
@@ -293,7 +305,9 @@ const Index = () => {
                 >
                   <CanvasEmbed canvasId={activeCanvas.id} onCanvasAction={handleCanvasAction} />
                 </motion.div>
-              ) : (
+              )}
+
+              {!showWelcome && !activeCanvas && (
                 <motion.div
                   key="waiting"
                   initial={{ opacity: 0 }}
@@ -310,7 +324,7 @@ const Index = () => {
               )}
             </AnimatePresence>
 
-            {/* Chat/Code overlay panel — slides in from the right */}
+            {/* Chat/Code overlay panel */}
             <AnimatePresence>
               {overlayMode !== 'none' && activeCanvas && (
                 <motion.div
@@ -332,7 +346,7 @@ const Index = () => {
                           const isUser = msg.role === 'user';
                           return (
                             <div key={msg.id} className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
-                              <div className={`max-w-[85%] rounded-xl px-3 py-2 text-xs ${
+                              <div className={`max-w-[85%] rounded-xl px-3 py-2 text-xs whitespace-pre-wrap ${
                                 isUser
                                   ? 'bg-primary text-primary-foreground'
                                   : 'bg-secondary text-foreground'
@@ -378,12 +392,12 @@ const Index = () => {
               )}
             </AnimatePresence>
 
-            {/* Floating draggable chat bubble — always present when not on welcome */}
-            {!showWelcome && overlayMode !== 'chat' && (
+            {/* Floating chat input — always present, starts centered on welcome, persists over canvas */}
+            {!showWelcome && (
               <FloatingChat
-                messages={messages}
-                isLoading={isLoading}
                 onSend={handleSend}
+                isLoading={isLoading}
+                startCentered={false}
               />
             )}
           </div>
