@@ -94,7 +94,7 @@ export function useSessionManager() {
         session_id: activeSessionId,
         role,
         content,
-        metadata: metadata || {},
+        metadata: (metadata || {}) as unknown as Record<string, never>,
       }])
       .select()
       .single();
