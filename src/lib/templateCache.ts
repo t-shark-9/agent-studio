@@ -8,6 +8,7 @@ export interface TemplateData {
   category: string;
   icon?: string;
   color?: string;
+  html: string;
   settings?: { key: string; label: string }[];
   createdAt: number;
 }
@@ -43,12 +44,17 @@ export function getCachedTemplates(): TemplateData[] {
   return _cache;
 }
 
-/** Get fresh templates (returns cached immediately if available, then fetches) */
+/** Get template by ID from cache */
+export function getCachedTemplate(id: string): TemplateData | undefined {
+  return _cache.find(t => t.id === id);
+}
+
+/** Get fresh templates */
 export function getTemplates(): Promise<TemplateData[]> {
   return fetchTemplates();
 }
 
-/** Force re-fetch (call after creating/extracting a template) */
+/** Force re-fetch */
 export function refreshTemplates(): Promise<TemplateData[]> {
   _fetchPromise = null;
   return fetchTemplates();

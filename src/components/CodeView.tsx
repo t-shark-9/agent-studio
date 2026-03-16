@@ -1,15 +1,17 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { Copy, Check, RefreshCw, Save } from 'lucide-react';
+import { Copy, Check, RefreshCw, Save, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 const CANVAS_URL = import.meta.env.VITE_CANVAS_URL || '/canvas';
 
 interface CodeViewProps {
   canvasId: string | null;
+  /** Live streaming HTML — when set, shows this instead of fetching from server */
+  streamingHtml?: string | null;
 }
 
-export function CodeView({ canvasId }: CodeViewProps) {
+export function CodeView({ canvasId, streamingHtml }: CodeViewProps) {
   const [html, setHtml] = useState<string>('');
   const [savedHtml, setSavedHtml] = useState<string>('');
   const [copied, setCopied] = useState(false);
@@ -85,11 +87,54 @@ export function CodeView({ canvasId }: CodeViewProps) {
     }
   };
 
-  if (!canvasId) {
+  const isStreaming = streamingHtml != null;
+  const streamRef = useRef<HTMLPreElement>(null);
+
+  // Auto-scroll the streaming code view to the bottom
+  useEffect(() => {
+    if (isStreaming && streamRef.current) {
+      streamRef.current.scrollTop = streamRef.current.scrollHeight;
+    }
+  }, [streamingHtml, isStreaming]);
+
+  // When streaming ends, load the final code from server
+  const prevStreaming = useRef(isStreaming);
+  useEffect(() => {
+    if (prevStreaming.current && !isStreaming) {
+      fetchCode();
+    }
+    prevStreaming.current = isStreaming;
+  }, [isStreaming, fetchCode]);
+
+  if (!canvasId && !isStreaming) {
     return (
       <div className="flex items-center justify-center h-full">
         <p className="text-sm text-muted-foreground">Start an experience to see its code here.</p>
       </div>
+    );
+  }
+
+  // Streaming mode — read-only, auto-scrolling
+  if (isStreaming) {
+    return (
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        className="flex flex-col h-full"
+      >
+        <div className="h-10 border-b border-border flex items-center px-3 shrink-0 bg-card">
+          <div className="flex items-center gap-2 text-xs font-mono text-primary animate-pulse">
+            <Sparkles className="h-3 w-3" />
+            Generating code...
+          </div>
+        </div>
+        <pre
+          ref={streamRef}
+          className="flex-1 overflow-auto bg-[#0d1117] p-4 text-xs font-mono text-[#c9d1d9] whitespace-pre-wrap break-words leading-relaxed min-h-0"
+        >
+          <code>{streamingHtml}</code>
+        </pre>
+      </motion.div>
     );
   }
 

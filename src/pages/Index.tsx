@@ -11,6 +11,7 @@ import { FloatingChat } from '@/components/FloatingChat';
 import { WelcomeScreen } from '@/components/WelcomeScreen';
 import { AuthModal } from '@/components/AuthModal';
 import { refreshTemplateCache } from '@/components/CanvasHome';
+import { getCachedTemplate } from '@/lib/templateCache';
 import { useSessionManager } from '@/hooks/useSessionManager';
 import { detectIntent } from '@/hooks/useIntentDetection';
 import { useAgent } from '@/hooks/useAgent';
@@ -34,6 +35,8 @@ const Index = () => {
   const [railCollapsed, setRailCollapsed] = useState(true);
   const [selectedModel, setSelectedModel] = useState('claude-sonnet-4.6');
   const [activeCanvas, setActiveCanvas] = useState<CanvasData | null>(null);
+  const [activeHtml, setActiveHtml] = useState<string | null>(null);
+  const [streamingHtml, setStreamingHtml] = useState<string | null>(null);
   const [overlayMode, setOverlayMode] = useState<OverlayMode>('none');
 
   const {
@@ -50,7 +53,7 @@ const Index = () => {
     deleteSession,
   } = useSessionManager();
 
-  const { getResponse } = useAgent();
+  const { streamResponse } = useAgent();
 
   // Show welcome content when no active session
   const showWelcome = !activeSessionId && messages.length === 0 && !activeCanvas;
@@ -136,23 +139,38 @@ const Index = () => {
     }
 
     setIsLoading(true);
+    setStreamingHtml(null);
+    let fullStream = '';
     try {
-      const response = await getResponse(
+      const response = await streamResponse(
         fullContent,
         contextType,
         selectedModel,
         [],
-        // onCanvasStart — show canvas live as it streams
-        (canvas) => {
-          setActiveCanvas(canvas);
-          setRailCollapsed(false);
+        {
+          onCanvasStart: (canvas) => {
+            setActiveCanvas(canvas);
+            setActiveHtml(null);
+            setRailCollapsed(false);
+            setOverlayMode('code');
+          },
+          onChunk: (chunk) => {
+            fullStream += chunk;
+            // Extract HTML inside <canvas-ui> for the code panel
+            const tagEnd = fullStream.indexOf('>', fullStream.indexOf('<canvas-ui'));
+            if (tagEnd >= 0) {
+              const htmlSoFar = fullStream.slice(tagEnd + 1).replace(/<\/canvas-ui>[\s\S]*$/, '');
+              setStreamingHtml(htmlSoFar);
+            }
+          },
         }
       );
 
+      setStreamingHtml(null);
       if (response.type === 'canvas' && response.canvas) {
         await addMessage('assistant', response.content, { canvas: response.canvas });
-        // Canvas was already set by onCanvasStart, but update to final version
         setActiveCanvas(response.canvas);
+        setActiveHtml(null);
         setRailCollapsed(false);
         extractTemplate(response.canvas.id);
       } else {
@@ -160,11 +178,21 @@ const Index = () => {
       }
     } catch {
       await addMessage('assistant', 'Sorry, something went wrong. Please try again.');
+      setStreamingHtml(null);
     }
     setIsLoading(false);
-  }, [activeSessionId, activeSession, addMessage, createSession, getResponse, setIsLoading, updateSessionContext, selectedModel, extractTemplate]);
+  }, [activeSessionId, activeSession, addMessage, createSession, streamResponse, setIsLoading, updateSessionContext, selectedModel, extractTemplate]);
 
   const handleUseTemplate = useCallback(async (templateId: string) => {
+    const tpl = getCachedTemplate(templateId);
+    if (!tpl) return;
+
+    // Show instantly via srcdoc — no server round trip
+    setActiveHtml(tpl.html);
+    setActiveCanvas({ id: '', url: '', embedUrl: '', title: tpl.name, templateId });
+    setRailCollapsed(false);
+
+    // Create session + register canvas with server in the background
     let currentSessionId = activeSessionId;
     if (!currentSessionId) {
       const session = await createSession();
@@ -172,10 +200,15 @@ const Index = () => {
       currentSessionId = session.id;
     }
 
+    await addMessage('user', `Use template: ${tpl.name}`);
+    await addMessage('assistant', `Here's your ${tpl.name}. You can interact with it or ask me to make changes.`);
+
+    // Register with canvas server in background (enables SSE live updates + code editing)
     try {
-      const res = await fetch(`${CANVAS_URL}/api/templates/${templateId}/instantiate`, {
+      const res = await fetch(`${CANVAS_URL}/api/canvas`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ html: tpl.html, title: tpl.name, type: tpl.category, sessionId: 'agent-studio' }),
       });
       if (res.ok) {
         const data = await res.json();
@@ -183,16 +216,14 @@ const Index = () => {
           id: data.canvasId,
           url: data.url,
           embedUrl: data.embedUrl,
-          title: data.title,
+          title: tpl.name,
           templateId,
         };
         setActiveCanvas(canvas);
-        setRailCollapsed(false);
-        await addMessage('user', `Use template: ${data.title}`);
-        await addMessage('assistant', `Here's your ${data.title}. You can interact with it or ask me to make changes.`, { canvas });
+        setActiveHtml(null); // switch to server-backed iframe
       }
     } catch {
-      // ignore
+      // Keep showing srcdoc version — still works fine
     }
   }, [activeSessionId, createSession, addMessage]);
 
@@ -204,6 +235,8 @@ const Index = () => {
   const handleNewSession = useCallback(() => {
     setActiveSessionId(null);
     setActiveCanvas(null);
+    setActiveHtml(null);
+    setStreamingHtml(null);
     setOverlayMode('none');
   }, [setActiveSessionId]);
 
@@ -300,14 +333,18 @@ const Index = () => {
 
               {activeCanvas && (
                 <motion.div
-                  key={`canvas-${activeCanvas.id}`}
+                  key={`canvas-${activeCanvas.id || 'srcdoc'}`}
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
                   transition={{ duration: 0.15 }}
                   className="h-full"
                 >
-                  <CanvasEmbed canvasId={activeCanvas.id} onCanvasAction={handleCanvasAction} />
+                  <CanvasEmbed
+                    canvasId={activeCanvas.id || undefined}
+                    html={activeHtml || undefined}
+                    onCanvasAction={handleCanvasAction}
+                  />
                 </motion.div>
               )}
 
@@ -410,7 +447,7 @@ const Index = () => {
                     </>
                   )}
                   {overlayMode === 'code' && (
-                    <CodeView canvasId={activeCanvas.id} />
+                    <CodeView canvasId={activeCanvas.id || null} streamingHtml={streamingHtml} />
                   )}
                   {overlayMode === 'settings' && (
                     <CanvasSettings canvasId={activeCanvas.id} templateId={activeCanvas.templateId} />
