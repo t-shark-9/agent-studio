@@ -29,8 +29,8 @@ export function ChatPane({ messages, isLoading, onSend, onOpenCanvas }: ChatPane
   }, [messages, isLoading]);
 
   return (
-    <div className="flex-1 flex flex-col min-w-0">
-      <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4">
+    <div className="h-full flex flex-col min-w-0">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4 min-h-0">
         {messages.length === 0 ? (
           <IntentCardFlow onComplete={(msg) => onSend(msg)} />
         ) : (
@@ -43,7 +43,9 @@ export function ChatPane({ messages, isLoading, onSend, onOpenCanvas }: ChatPane
         )}
       </div>
 
-      <MessageComposer onSend={onSend} disabled={isLoading} />
+      <div className="shrink-0">
+        <MessageComposer onSend={onSend} disabled={isLoading} />
+      </div>
     </div>
   );
 }

@@ -7,6 +7,7 @@ import { ChatPane } from '@/components/ChatPane';
 import { CanvasHome, refreshTemplateCache } from '@/components/CanvasHome';
 import { CanvasEmbed } from '@/components/CanvasEmbed';
 import { CodeView } from '@/components/CodeView';
+import { FloatingChat } from '@/components/FloatingChat';
 import { AuthModal } from '@/components/AuthModal';
 import { useSessionManager } from '@/hooks/useSessionManager';
 import { detectIntent } from '@/hooks/useIntentDetection';
@@ -273,13 +274,18 @@ const Index = () => {
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
                   transition={{ duration: 0.15 }}
-                  className="h-full"
+                  className="h-full relative"
                 >
                   {activeCanvas ? (
                     <CanvasEmbed canvasId={activeCanvas.id} onCanvasAction={handleCanvasAction} />
                   ) : (
                     <CanvasHome onStartFlow={handleStartFlow} onUseTemplate={handleUseTemplate} />
                   )}
+                  <FloatingChat
+                    messages={messages}
+                    isLoading={isLoading}
+                    onSend={handleSend}
+                  />
                 </motion.div>
               )}
 
