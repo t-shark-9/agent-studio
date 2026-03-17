@@ -5,6 +5,7 @@ import { AGENT_MODELS } from '@/components/StatusBar';
 import { TaskRail } from '@/components/TaskRail';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { CanvasEmbed } from '@/components/CanvasEmbed';
+import { BrowserView } from '@/components/BrowserView';
 import { CodeView } from '@/components/CodeView';
 import { CanvasSettings } from '@/components/CanvasSettings';
 import { FloatingChat } from '@/components/FloatingChat';
@@ -38,6 +39,7 @@ const Index = () => {
   const [activeHtml, setActiveHtml] = useState<string | null>(null);
   const [streamingHtml, setStreamingHtml] = useState<string | null>(null);
   const [overlayMode, setOverlayMode] = useState<OverlayMode>('none');
+  const [browserUrl, setBrowserUrl] = useState<string | null>(null);
 
   const {
     sessions,
@@ -59,7 +61,7 @@ const Index = () => {
   const [settingsVersion, setSettingsVersion] = useState(0);
 
   // Show welcome content when no active session
-  const showWelcome = !activeSessionId && messages.length === 0 && !activeCanvas;
+  const showWelcome = !activeSessionId && messages.length === 0 && !activeCanvas && !browserUrl;
 
   // Canvas restore: only runs when explicitly switching to an existing session via sidebar
   const [restoreSessionId, setRestoreSessionId] = useState<string | null>(null);
@@ -143,6 +145,34 @@ const Index = () => {
         intent.type === 'media' ? 'Media Creation' :
         intent.type === 'browse' ? 'Browsing' : 'Chat'
       );
+
+      // For browse intent, show the BrowserView immediately
+      if (intent.type === 'browse') {
+        // Extract URL from message if present, otherwise detect site
+        const urlMatch = content.match(/https?:\/\/[^\s]+/);
+        const siteMatch = content.match(/\b(youtube|google|reddit|github|twitter|wikipedia|x)\.com\b/i) ||
+                          content.match(/\b(youtube|google|reddit|github|twitter|wikipedia)\b/i);
+        let browseTarget = urlMatch?.[0] || null;
+        if (!browseTarget && siteMatch) {
+          const site = siteMatch[1].toLowerCase();
+          browseTarget = `https://www.${site}.com`;
+        }
+        if (!browseTarget && /\b(search|look\s*up|google|find)\b/i.test(content)) {
+          // Extract the search query
+          const query = content.replace(/\b(search|look\s*up|google|find|for|on the web|on the internet|online)\b/gi, '').trim();
+          if (query) browseTarget = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
+        }
+        if (!browseTarget && /\byoutube\b/i.test(content)) {
+          browseTarget = 'https://www.youtube.com';
+        }
+        setBrowserUrl(browseTarget || 'https://www.google.com');
+        setActiveCanvas(null);
+        setActiveHtml(null);
+        setRailCollapsed(false);
+        await addMessage('assistant', `Opening browser${browseTarget ? `: ${browseTarget}` : ''}`, undefined, currentSessionId);
+        setIsLoading(false);
+        return;
+      }
     }
 
     setIsLoading(true);
@@ -324,6 +354,7 @@ const Index = () => {
     setActiveCanvas(null);
     setActiveHtml(null);
     setStreamingHtml(null);
+    setBrowserUrl(null);
     setOverlayMode('none');
   }, [setActiveSessionId]);
 
@@ -331,6 +362,7 @@ const Index = () => {
     setActiveSessionId(id);
     setActiveCanvas(null);
     setActiveHtml(null);
+    setBrowserUrl(null);
     setMessages([]);
     setOverlayMode('none');
     setRestoreSessionId(id); // Trigger canvas restore after messages load
@@ -355,12 +387,12 @@ const Index = () => {
 
         {/* Main content — single unified area */}
         <div className="flex-1 flex flex-col min-w-0 relative">
-          {/* Canvas title bar — only when canvas is active */}
-          {activeCanvas && (
+          {/* Canvas/Browser title bar */}
+          {(activeCanvas || browserUrl) && (
             <div className="h-10 border-b border-border flex items-center px-3 gap-1 shrink-0 bg-card/50 z-10">
               <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                 <Sparkles className="h-3 w-3 text-primary" />
-                <span className="font-medium">{activeCanvas.title}</span>
+                <span className="font-medium">{browserUrl ? 'Browser' : activeCanvas?.title}</span>
               </div>
               <div className="ml-auto flex items-center gap-1">
                 <button
@@ -422,7 +454,7 @@ const Index = () => {
                 </motion.div>
               )}
 
-              {activeCanvas && (
+              {activeCanvas && !browserUrl && (
                 <motion.div
                   key={`canvas-${activeCanvas.id || 'srcdoc'}`}
                   initial={{ opacity: 0 }}
@@ -439,7 +471,25 @@ const Index = () => {
                 </motion.div>
               )}
 
-              {!showWelcome && !activeCanvas && (
+              {browserUrl && (
+                <motion.div
+                  key="browser"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.15 }}
+                  className="h-full"
+                >
+                  <BrowserView
+                    initialUrl={browserUrl}
+                    onNavigate={(url, title) => {
+                      console.log('[Browser]', title, url);
+                    }}
+                  />
+                </motion.div>
+              )}
+
+              {!showWelcome && !activeCanvas && !browserUrl && (
                 <motion.div
                   key="waiting"
                   initial={{ opacity: 0 }}
@@ -458,7 +508,7 @@ const Index = () => {
 
             {/* Chat/Code overlay panel */}
             <AnimatePresence>
-              {overlayMode !== 'none' && activeCanvas && (
+              {overlayMode !== 'none' && (activeCanvas || browserUrl) && (
                 <motion.div
                   key={overlayMode}
                   initial={{ x: '100%', opacity: 0 }}
