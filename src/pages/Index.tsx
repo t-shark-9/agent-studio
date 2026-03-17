@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MessageSquare, Code2, Sparkles, Settings, Cpu } from 'lucide-react';
+import { MessageSquare, Code2, Sparkles, Settings, Cpu, Link2 } from 'lucide-react';
 import { AGENT_MODELS } from '@/components/StatusBar';
 import { TaskRail } from '@/components/TaskRail';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -8,6 +8,7 @@ import { CanvasEmbed } from '@/components/CanvasEmbed';
 import { BrowserView } from '@/components/BrowserView';
 import { CodeView } from '@/components/CodeView';
 import { CanvasSettings } from '@/components/CanvasSettings';
+import { ConnectedAccounts } from '@/components/ConnectedAccounts';
 import { FloatingChat } from '@/components/FloatingChat';
 import { WelcomeScreen } from '@/components/WelcomeScreen';
 import { AuthModal } from '@/components/AuthModal';
@@ -19,7 +20,7 @@ import { useAgent } from '@/hooks/useAgent';
 import type { ContextType } from '@/types/chat';
 import type { AttachedFile } from '@/components/MessageComposer';
 
-type OverlayMode = 'none' | 'chat' | 'code' | 'settings';
+type OverlayMode = 'none' | 'chat' | 'code' | 'settings' | 'connections';
 
 const CANVAS_URL = import.meta.env.VITE_CANVAS_URL || '/canvas';
 
@@ -435,6 +436,17 @@ const Index = () => {
                   <Settings className="h-3.5 w-3.5" />
                   Settings
                 </button>
+                <button
+                  onClick={() => toggleOverlay('connections')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                    overlayMode === 'connections'
+                      ? 'bg-primary text-primary-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
+                  }`}
+                >
+                  <Link2 className="h-3.5 w-3.5" />
+                  Connect
+                </button>
               </div>
             </div>
           )}
@@ -598,7 +610,10 @@ const Index = () => {
                     <CodeView canvasId={activeCanvas.id || null} streamingHtml={streamingHtml} />
                   )}
                   {overlayMode === 'settings' && (
-                    <CanvasSettings canvasId={activeCanvas.id} settingsVersion={settingsVersion} />
+                    <CanvasSettings canvasId={activeCanvas?.id || null} settingsVersion={settingsVersion} />
+                  )}
+                  {overlayMode === 'connections' && (
+                    <ConnectedAccounts entityId={activeSessionId || 'anonymous'} />
                   )}
                 </motion.div>
               )}

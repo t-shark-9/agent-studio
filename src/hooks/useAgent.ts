@@ -272,6 +272,33 @@ Add "Open in Google Sheets" button that navigates to sheets.google.com/create in
 **When user attaches a file and asks to convert/process it:**
 The file data is available as a base64 data URL in the message metadata. Use it directly in API calls.
 
+CONNECTED SERVICES (via Composio):
+Users can connect their accounts (Gmail, Google Drive, Notion, Slack, etc.) to Agent Studio.
+When a user has services connected, you can call actions on their behalf from canvas JavaScript:
+
+\`\`\`js
+// Execute a Composio action on behalf of the user
+async function executeAction(action, params) {
+  const res = await fetch('/integrations/execute', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ action, entityId: 'USER_ENTITY_ID', params })
+  });
+  return (await res.json()).result;
+}
+
+// Examples:
+// Send email: executeAction('GMAIL_SEND_EMAIL', { to: 'user@example.com', subject: 'Hello', body: 'Hi there' })
+// Create Notion page: executeAction('NOTION_CREATE_PAGE', { title: 'Meeting Notes', content: '...' })
+// List Drive files: executeAction('GOOGLEDRIVE_LIST_FILES', { query: 'type:document' })
+// Send Slack message: executeAction('SLACK_SEND_MESSAGE', { channel: '#general', text: 'Hello!' })
+// Create calendar event: executeAction('GOOGLECALENDAR_CREATE_EVENT', { title: '...', start: '...', end: '...' })
+\`\`\`
+
+When the user asks to do something that involves a connected service (check email, send a message, create a doc, etc.):
+1. Create a canvas that calls the appropriate Composio action
+2. Show the results in a beautiful visual layout
+3. If the service isn't connected, show a prompt to connect it via the "Connect" tab
+
 WHEN TO USE PLAIN TEXT (rare):
 - Only for very short confirmations ("Done", "Got it")
 - When the user explicitly says "just text" or "no UI"

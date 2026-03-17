@@ -26,6 +26,11 @@ export default defineConfig(({ mode }) => ({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/browser/, ''),
       },
+      '/integrations': {
+        target: 'http://localhost:4300',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/integrations/, ''),
+      },
     },
   },
   plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),
