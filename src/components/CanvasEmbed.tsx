@@ -13,7 +13,7 @@ function wrapHtml(html: string): string {
   return `<!DOCTYPE html>
 <html><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}</style>
+<link rel="stylesheet" href="/canvas/static/design-system.css">
 </head><body>
 <div id="canvas-root">${html}</div>
 <script>

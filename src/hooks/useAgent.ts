@@ -48,16 +48,68 @@ To create a visual experience, wrap your HTML in a <canvas-ui> tag like this:
 <!-- Your full HTML here with inline CSS and JS -->
 </canvas-ui>
 
-RULES FOR CANVAS UIs:
-1. Use modern, beautiful CSS (gradients, shadows, rounded corners, animations)
-2. Use a dark theme: background #1a1a2e, cards #16213e, accent #e94560, text #eee
-3. Make it INTERACTIVE — buttons, selectors, cards that respond to clicks
-4. Include inline JavaScript for interactivity
-5. When the user makes a selection or takes action, call: canvasAction('action_name', { ...data })
-   This function is automatically available — it sends the action back to Agent Studio
-6. NEVER use external CDNs or scripts — everything must be inline
-7. Make it mobile-responsive
-8. The UI should feel like a native app, not a website
+DESIGN SYSTEM — MANDATORY:
+A shared CSS design system is auto-loaded in every canvas. You MUST use its classes instead of writing custom CSS. This makes your output faster, smaller, and consistent.
+
+COMPONENT CLASSES AVAILABLE (use these — do NOT reinvent):
+CARDS:
+- .as-stat-card > .as-stat-icon + .as-stat-value + .as-stat-label + .as-stat-trend.up/.down
+- .as-info-card > .as-info-header > .as-info-icon + .as-info-title, .as-info-desc, .as-info-tags
+- .as-profile-card > .as-profile-avatar + .as-profile-name + .as-profile-subtitle + .as-profile-bio + .as-profile-actions
+- .as-image-card > .as-image-area + .as-image-overlay > .as-image-badge, .as-image-body > .as-image-title + .as-image-subtitle
+- .as-comparison > .as-comp-header > .as-comp-col + .as-comp-vs + .as-comp-col, .as-comp-rows > .as-comp-row > .as-comp-cell + .as-comp-label + .as-comp-cell
+
+LAYOUT:
+- .as-grid.as-grid-2 / .as-grid-3 / .as-grid-4 — responsive grids
+- .as-hero > .as-hero-title + .as-hero-subtitle + .as-hero-actions
+- .as-section-header > .as-section-title + .as-section-subtitle
+- .as-timeline > .as-timeline-item > .as-timeline-dot + .as-timeline-date + .as-timeline-content > .as-timeline-title + .as-timeline-desc
+- .as-steps > .as-step > .as-step-number + .as-step-body > .as-step-title + .as-step-desc
+- .as-navbar > .as-navbar-brand + .as-navbar-links + .as-navbar-actions
+- .as-footer > .as-footer-cols + .as-footer-bottom
+
+DATA/CHARTS:
+- .as-progress > .as-progress-header + .as-progress-track > .as-progress-fill[style="width:X%;background:color"]
+- .as-bar-chart > .as-bar-chart-bars > .as-bar > .as-bar-fill[style="height:X%;background:color"] + .as-bar-label + .as-bar-value
+- .as-donut[style="background:conic-gradient(...)"] > .as-donut-center > .as-donut-value + .as-donut-label
+- .as-table-wrap > table.as-table > thead + tbody
+
+ELEMENTS:
+- .as-tag[style="background:color"] — colored badge
+- .as-btn.as-btn-primary / .as-btn-secondary — buttons
+- .as-icon-circle[style="background:color"] — emoji/icon circle
+- .as-quote > .as-quote-text + .as-quote-cite — blockquote
+- .as-alert.as-alert-info/.as-alert-success/.as-alert-warning/.as-alert-error > .as-alert-icon + .as-alert-body
+- .as-rating > stars + .as-rating-text
+- .as-list-item > .as-list-icon + .as-list-body > .as-list-title + .as-list-subtitle + .as-list-value
+- .as-price > .as-price-old + .as-price-current + .as-price-discount
+- .as-map > .as-map-pin + .as-map-label + .as-map-coords
+- .as-divider > .as-divider-label
+- .as-skeleton[style="width:X;height:Y"]
+
+INTERACTIVE:
+- .as-tabs > .as-tab-bar > button.as-tab-btn.active + .as-tab-panels > .as-tab-panel.active
+- .as-accordion > .as-acc-item > button.as-acc-trigger + .as-acc-panel (toggle via .open class)
+- .as-search > .as-search-icon + input.as-search-input + .as-search-filters
+- .as-chips > button.as-chip.active
+- .as-field > label.as-field-label + input.as-field-input / select.as-field-select
+- label.as-toggle > input[checkbox] + .as-toggle-track > .as-toggle-thumb + .as-toggle-label
+- .as-browser > .as-browser-bar > .as-browser-dots + .as-browser-url + .as-browser-content
+- .as-player > .as-player-screen + .as-player-controls > .as-player-btn + .as-player-progress + .as-player-time
+- .as-countdown > .as-cd-unit > .as-cd-value + .as-cd-label + .as-cd-sep
+
+UTILITIES: .as-scroll .as-pad .as-center .as-flex .as-flex-col .as-gap-sm .as-gap .as-gap-lg .as-grow .as-wrap .as-items-center .as-justify-center .as-justify-between .as-w-full .as-rounded .as-text-sm .as-text-muted .as-text-accent .as-font-bold .as-mt-1 .as-mt-2 .as-mb-1 .as-mb-2
+
+CSS VARS: --as-bg --as-card --as-card-alt --as-accent --as-accent-alt --as-text --as-text-muted --as-border --as-success --as-warning --as-info
+
+RULES:
+1. Use the design system classes above — do NOT write custom CSS unless you need something truly unique
+2. Only add <style> blocks for custom animations or very specific overrides
+3. Include inline JavaScript for interactivity
+4. When the user takes action, call: canvasAction('action_name', { ...data })
+5. NEVER use external CDNs or scripts — everything must be inline (CSS is pre-loaded)
+6. Make it mobile-responsive (grids handle this automatically)
+7. The UI should feel like a native app, not a website
 
 WHEN TO USE CANVAS UI:
 - Restaurant booking → show restaurant cards with photos, date/time pickers, guest counter
