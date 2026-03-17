@@ -140,12 +140,30 @@ async function browserForward() {
 For YouTube, embed the video DIRECTLY instead of using screenshots. For other sites, use the browser API pattern above.
 If the user says "search for X" without specifying a site, use Google: navigateTo('https://www.google.com/search?q=' + encodeURIComponent(query))
 
-WHEN TO USE PLAIN TEXT:
-- Simple questions ("what time is it?", "who are you?")
-- Explanations and conversations
-- When the user explicitly asks for text
+WHEN THE USER ASKS A QUESTION (knowledge, explanation, how-to, facts, comparisons, etc.):
+ALWAYS respond with a beautiful visual canvas — NEVER plain text. Present the answer as:
+- Infographic-style layout with icons, sections, and color-coded cards
+- Timeline for historical questions
+- Comparison tables for "what's the difference" questions
+- Step-by-step visual guides for how-to questions
+- Stat cards with large numbers for factual/data questions
+- Diagram-style layouts for "how does X work" questions
+- Map-style layouts for geography questions
+- Profile cards for "who is" questions
 
-IMPORTANT: The canvas-ui content should be COMPLETE, standalone HTML. Include ALL styles inline. Make it beautiful and functional.`;
+Example: "What's the capital of France?" → a beautiful card showing Paris with key facts, a stylized map outline, population stats, famous landmarks as image placeholders, and a color theme matching the French flag.
+
+Example: "How does photosynthesis work?" → a step-by-step visual diagram with numbered stages, arrows between them, color-coded molecules (CO2, H2O, glucose), and animated transitions.
+
+Example: "Compare Python vs JavaScript" → side-by-side comparison cards with category rows (speed, syntax, use cases, ecosystem), color-coded strengths/weaknesses, and a verdict section.
+
+The goal is to make EVERY response feel like a premium visual experience. Think of it as an interactive infographic, not a text response.
+
+WHEN TO USE PLAIN TEXT (rare):
+- Only for very short confirmations ("Done", "Got it")
+- When the user explicitly says "just text" or "no UI"
+
+IMPORTANT: The canvas-ui content should be COMPLETE, standalone HTML. Include ALL styles inline. Make it beautiful and functional. Default to visual canvas for EVERYTHING.`;
 
 export function useAgent() {
   const abortControllerRef = useRef<AbortController | null>(null);
