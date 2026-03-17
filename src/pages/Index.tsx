@@ -244,7 +244,28 @@ const Index = () => {
 
   // Edit the current canvas — used by overlay chat (doesn't create a new canvas)
   const handleEditSend = useCallback(async (content: string) => {
-    if (!activeCanvas?.id) return;
+    if (!activeCanvas) return;
+
+    // If canvas has no server-side id yet (srcdoc template), register it first
+    let canvasId = activeCanvas.id;
+    if (!canvasId && activeHtml) {
+      try {
+        const res = await fetch(`${CANVAS_URL}/api/canvas`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ html: activeHtml, title: activeCanvas.title, type: 'generic', sessionId: 'agent-studio' }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          canvasId = data.canvasId;
+          setActiveCanvas(prev => prev ? { ...prev, id: canvasId, url: data.url, embedUrl: data.embedUrl } : prev);
+          setActiveHtml(null); // Switch to server-backed iframe
+        }
+      } catch {
+        // Can't register — bail
+      }
+    }
+    if (!canvasId) return;
 
     let currentSessionId = activeSessionId;
     if (!currentSessionId) {
@@ -256,23 +277,27 @@ const Index = () => {
     await addMessage('user', content, undefined, currentSessionId);
     setIsLoading(true);
     setStreamingHtml(null);
+    setOverlayMode('code'); // Show code panel while editing
 
     let fullStream = '';
     try {
       const result = await streamEdit(
         content,
         '', // currentHtml is fetched inside streamEdit from canvas server
-        activeCanvas.id,
+        canvasId,
         selectedModel,
         [],
         {
           onChunk: (chunk) => {
             fullStream += chunk;
             // Extract content inside <canvas-patch> for the code panel
-            const tagEnd = fullStream.indexOf('>', fullStream.indexOf('<canvas-patch'));
-            if (tagEnd >= 0) {
-              const patchSoFar = fullStream.slice(tagEnd + 1).replace(/<\/canvas-patch>[\s\S]*$/, '');
-              setStreamingHtml(patchSoFar);
+            const patchStart = fullStream.indexOf('<canvas-patch');
+            if (patchStart >= 0) {
+              const tagEnd = fullStream.indexOf('>', patchStart);
+              if (tagEnd >= 0) {
+                const patchSoFar = fullStream.slice(tagEnd + 1).replace(/<\/canvas-patch>[\s\S]*$/, '');
+                setStreamingHtml(patchSoFar);
+              }
             }
           },
         }
@@ -291,7 +316,7 @@ const Index = () => {
       setStreamingHtml(null);
     }
     setIsLoading(false);
-  }, [activeCanvas, activeSessionId, addMessage, createSession, streamEdit, setIsLoading, selectedModel]);
+  }, [activeCanvas, activeHtml, activeSessionId, addMessage, createSession, streamEdit, setIsLoading, selectedModel]);
 
   const handleNewSession = useCallback(() => {
     setActiveSessionId(null);
