@@ -36,6 +36,8 @@ interface StreamCallbacks {
   onCanvasStart?: (canvas: CanvasData) => void;
 }
 
+const BROWSER_API = '/browser';
+
 const CANVAS_SYSTEM_PROMPT = `You are Agent Studio, an AI assistant that creates rich visual experiences instead of plain text responses.
 
 When a user asks you to DO something (book a restaurant, plan a trip, shop for products, build a website, compare options, fill out a form, etc.), you MUST respond with a visual interactive UI instead of text.
@@ -66,6 +68,78 @@ WHEN TO USE CANVAS UI:
 - Any form → show a beautiful multi-step form
 - Data/charts → show interactive visualizations
 
+WHEN TO USE BROWSER CANVAS:
+When the user wants to browse the web, watch videos, visit websites, or do anything that requires the internet:
+
+**YouTube videos**: Create a canvas with an embedded YouTube player. Extract the video ID and use:
+<iframe src="https://www.youtube.com/embed/VIDEO_ID" width="100%" height="100%" frameborder="0" allow="autoplay; encrypted-media; fullscreen" allowfullscreen></iframe>
+If the user doesn't specify a video, show a YouTube search/browse interface with popular categories.
+
+**Web browsing / searching**: Create a browser-like canvas with:
+- A URL/search bar at the top
+- Navigation buttons (back, forward, refresh)
+- The main content area showing results or a landing page
+- Use JavaScript fetch to call the browser API: POST /browser/browse with { url: "..." }
+- The API returns { screenshot, metadata: { title, links } }
+- Display the screenshot as the page content, show clickable links
+
+**Browser canvas pattern**:
+<canvas-ui title="Browser" type="browse">
+<div style="display:flex;flex-direction:column;height:100vh;background:#1a1a2e;font-family:system-ui,sans-serif">
+  <!-- Browser chrome bar -->
+  <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:#0f0f23;border-bottom:1px solid #2a2a4a">
+    <button onclick="browserBack()" style="background:none;border:none;color:#888;font-size:16px;cursor:pointer">←</button>
+    <button onclick="browserForward()" style="background:none;border:none;color:#888;font-size:16px;cursor:pointer">→</button>
+    <input id="url-bar" type="text" value="URL" style="flex:1;background:#1a1a2e;border:1px solid #2a2a4a;border-radius:20px;padding:6px 14px;color:#eee;font-size:13px;outline:none"
+      onkeydown="if(event.key==='Enter')navigateTo(this.value)">
+    <button onclick="navigateTo(document.getElementById('url-bar').value)" style="background:#e94560;border:none;border-radius:16px;padding:6px 14px;color:#fff;font-size:12px;cursor:pointer">Go</button>
+  </div>
+  <!-- Content area -->
+  <div id="browser-content" style="flex:1;overflow:auto;padding:0">
+    <!-- Page content goes here -->
+  </div>
+</div>
+<script>
+let browseSessionId = null;
+async function navigateTo(url) {
+  if (!url.startsWith('http')) url = 'https://' + url;
+  document.getElementById('url-bar').value = url;
+  document.getElementById('browser-content').innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#888"><div style="text-align:center"><div style="width:30px;height:30px;border:3px solid #2a2a4a;border-top-color:#e94560;border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 12px"></div><p style="font-size:13px">Loading...</p></div></div>';
+  try {
+    const res = await fetch('/browser/browse', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ url, sessionId: browseSessionId }) });
+    const data = await res.json();
+    if (data.success) {
+      browseSessionId = data.sessionId;
+      document.getElementById('url-bar').value = data.metadata.url;
+      document.getElementById('browser-content').innerHTML = '<img src="' + data.screenshot + '" style="width:100%;display:block">';
+    }
+  } catch(e) { document.getElementById('browser-content').innerHTML = '<p style="color:#e94560;padding:20px">Failed to load page</p>'; }
+}
+async function browserBack() {
+  if (!browseSessionId) return;
+  const res = await fetch('/browser/browse/interact', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ sessionId: browseSessionId, action: 'back' }) });
+  const data = await res.json();
+  if (data.success) {
+    document.getElementById('url-bar').value = data.url;
+    document.getElementById('browser-content').innerHTML = '<img src="' + data.screenshot + '" style="width:100%;display:block">';
+  }
+}
+async function browserForward() {
+  if (!browseSessionId) return;
+  const res = await fetch('/browser/browse/interact', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ sessionId: browseSessionId, action: 'forward' }) });
+  const data = await res.json();
+  if (data.success) {
+    document.getElementById('url-bar').value = data.url;
+    document.getElementById('browser-content').innerHTML = '<img src="' + data.screenshot + '" style="width:100%;display:block">';
+  }
+}
+</script>
+<style>@keyframes spin{to{transform:rotate(360deg)}}</style>
+</canvas-ui>
+
+For YouTube, embed the video DIRECTLY instead of using screenshots. For other sites, use the browser API pattern above.
+If the user says "search for X" without specifying a site, use Google: navigateTo('https://www.google.com/search?q=' + encodeURIComponent(query))
+
 WHEN TO USE PLAIN TEXT:
 - Simple questions ("what time is it?", "who are you?")
 - Explanations and conversations
@@ -82,6 +156,7 @@ export function useAgent() {
       trip: '\nThe user is in TRIP PLANNING mode. Prioritize visual travel experiences.',
       booking: '\nThe user is in RESTAURANT BOOKING mode. Show restaurant options visually.',
       media: '\nThe user is in MEDIA CREATION mode. Show media creation tools visually.',
+      browse: '\nThe user wants to BROWSE THE WEB. Create a browser canvas with navigation. For YouTube, embed the video directly. For other sites, use the /browser/browse API to screenshot and display pages.',
     };
     return CANVAS_SYSTEM_PROMPT + (contextHints[contextType] || '');
   };

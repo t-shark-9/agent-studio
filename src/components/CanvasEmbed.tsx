@@ -55,8 +55,8 @@ export function CanvasEmbed({ canvasId, html, onCanvasAction }: CanvasEmbedProps
           ref={iframeRef}
           srcDoc={wrapHtml(html)}
           className="w-full flex-1 border-0"
-          sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
-          allow="clipboard-write"
+          sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-presentation"
+          allow="clipboard-write; autoplay; encrypted-media; fullscreen"
           title="Canvas Experience"
         />
       ) : (
@@ -64,8 +64,8 @@ export function CanvasEmbed({ canvasId, html, onCanvasAction }: CanvasEmbedProps
           ref={iframeRef}
           src={canvasId ? `/canvas/embed/${canvasId}` : 'about:blank'}
           className="w-full flex-1 border-0"
-          sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
-          allow="clipboard-write"
+          sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-presentation"
+          allow="clipboard-write; autoplay; encrypted-media; fullscreen"
           title="Canvas Experience"
         />
       )}

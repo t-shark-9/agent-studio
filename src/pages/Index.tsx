@@ -140,7 +140,8 @@ const Index = () => {
       await updateSessionContext(currentSessionId, intent.type,
         intent.type === 'trip' ? `Trip${intent.entities?.destination ? ` to ${intent.entities.destination}` : ''}` :
         intent.type === 'booking' ? 'Restaurant Booking' :
-        intent.type === 'media' ? 'Media Creation' : 'Chat'
+        intent.type === 'media' ? 'Media Creation' :
+        intent.type === 'browse' ? 'Browsing' : 'Chat'
       );
     }
 

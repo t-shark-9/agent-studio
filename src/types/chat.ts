@@ -19,7 +19,7 @@ export interface ChatSession {
   updated_at: string;
 }
 
-export type ContextType = 'chat' | 'trip' | 'booking' | 'media';
+export type ContextType = 'chat' | 'trip' | 'booking' | 'media' | 'browse';
 
 export interface IntentDetection {
   type: ContextType;

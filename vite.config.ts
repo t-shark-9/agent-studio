@@ -21,6 +21,11 @@ export default defineConfig(({ mode }) => ({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/canvas/, ''),
       },
+      '/browser': {
+        target: 'http://localhost:3457',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/browser/, ''),
+      },
     },
   },
   plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),
