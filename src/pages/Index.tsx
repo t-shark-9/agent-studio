@@ -128,7 +128,14 @@ const Index = () => {
 
     let fullContent = content;
     if (files && files.length > 0) {
-      const fileDescs = files.map(f => `[Attached: ${f.file.name} (${f.file.type}, ${(f.file.size / 1024).toFixed(0)}KB)]`);
+      const fileDescs = files.map(f => {
+        const desc = `[Attached: ${f.file.name} (${f.file.type}, ${(f.file.size / 1024).toFixed(0)}KB)]`;
+        // Include the actual data URL for images so the AI can use it in file processing APIs
+        if (f.preview && f.file.type.startsWith('image/')) {
+          return `${desc}\n[File data URL: ${f.preview}]`;
+        }
+        return desc;
+      });
       fullContent = fileDescs.join('\n') + (content ? '\n' + content : '');
     }
 
