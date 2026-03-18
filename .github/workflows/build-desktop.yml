@@ -1,13 +1,71 @@
-name: Build Desktop App
+name: Build & Release All Apps
 
 on:
   workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g. v0.1.0)'
+        required: false
   push:
     tags:
       - 'v*'
 
+env:
+  RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+
 jobs:
+  # ──────────────────────────────────────────────
+  # 1. Create the GitHub Release (once)
+  # ──────────────────────────────────────────────
+  create-release:
+    runs-on: ubuntu-latest
+    outputs:
+      upload_url: ${{ steps.release.outputs.upload_url }}
+      release_id: ${{ steps.release.outputs.id }}
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Determine tag
+        id: tag
+        run: |
+          TAG="${{ env.RELEASE_TAG }}"
+          if [ -z "$TAG" ] || [ "$TAG" = "refs/heads/seo-pages" ]; then
+            TAG="v0.1.0-dev.$(date +%Y%m%d%H%M%S)"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        id: release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: Agent Studio ${{ steps.tag.outputs.tag }}
+          body: |
+            ## Agent Studio ${{ steps.tag.outputs.tag }}
+
+            ### Downloads
+            | Platform | File |
+            |----------|------|
+            | macOS (Universal) | `Agent-Studio_*_universal.dmg` |
+            | Windows (Installer) | `Agent-Studio_*_x64-setup.exe` |
+            | Windows (MSI) | `Agent-Studio_*_x64_en-US.msi` |
+            | iOS (Xcode Project) | `Agent-Studio-iOS.zip` |
+
+            ### iOS Note
+            The iOS `.zip` contains the Xcode project. Open it in Xcode, select your iPhone, and press Run.
+            For App Store distribution, configure code signing in Xcode.
+          draft: false
+          prerelease: ${{ !startsWith(env.RELEASE_TAG, 'v') }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ──────────────────────────────────────────────
+  # 2. macOS Desktop (.dmg)
+  # ──────────────────────────────────────────────
   build-macos:
+    needs: create-release
     runs-on: macos-latest
     steps:
       - name: Checkout code
@@ -38,17 +96,30 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           args: --target universal-apple-darwin
+          tagName: ""
+          releaseName: ""
 
-      - name: Upload macOS artifacts
+      - name: Upload .dmg to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.create-release.outputs.tag }}
+          files: src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: agent-studio-macos
           path: |
             src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
-            src-tauri/target/universal-apple-darwin/release/bundle/macos/*.app
           retention-days: 30
 
+  # ──────────────────────────────────────────────
+  # 3. Windows Desktop (.exe + .msi)
+  # ──────────────────────────────────────────────
   build-windows:
+    needs: create-release
     runs-on: windows-latest
     steps:
       - name: Checkout code
@@ -75,12 +146,84 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ""
+          releaseName: ""
 
-      - name: Upload Windows artifacts
+      - name: Upload .exe + .msi to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.create-release.outputs.tag }}
+          files: |
+            src-tauri/target/release/bundle/nsis/*.exe
+            src-tauri/target/release/bundle/msi/*.msi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: agent-studio-windows
           path: |
             src-tauri/target/release/bundle/nsis/*.exe
             src-tauri/target/release/bundle/msi/*.msi
+          retention-days: 30
+
+  # ──────────────────────────────────────────────
+  # 4. iOS App (Capacitor Xcode project)
+  # ──────────────────────────────────────────────
+  build-ios:
+    needs: create-release
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build web assets
+        run: npm run build
+
+      - name: Sync Capacitor iOS
+        run: npx cap sync ios
+
+      - name: Build iOS (unsigned, for simulator)
+        run: |
+          cd ios/App
+          xcodebuild build \
+            -scheme App \
+            -destination 'generic/platform=iOS Simulator' \
+            -configuration Release \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            | tail -20
+
+      - name: Package iOS build
+        run: |
+          cd ios
+          zip -r ../Agent-Studio-iOS.zip App/ \
+            -x "App/build/*" \
+            -x "App/Pods/*" \
+            -x "App/App/public/*"
+
+      - name: Upload iOS to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.create-release.outputs.tag }}
+          files: Agent-Studio-iOS.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-studio-ios
+          path: Agent-Studio-iOS.zip
           retention-days: 30
