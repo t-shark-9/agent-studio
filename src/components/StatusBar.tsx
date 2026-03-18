@@ -1,5 +1,6 @@
 import { motion } from 'framer-motion';
 import { Sparkles } from 'lucide-react';
+import { RuntimeBadge } from './RuntimeBadge';
 
 export const AGENT_MODELS = [
   { id: 'claude-sonnet-4.6', label: 'Claude Sonnet 4.6', provider: 'Anthropic' },
@@ -21,6 +22,9 @@ export function StatusBar() {
         />
         <Sparkles className="h-3.5 w-3.5 text-primary" />
         <span className="text-xs font-mono text-primary font-semibold tracking-wide">AGENT STUDIO</span>
+      </div>
+      <div className="ml-auto">
+        <RuntimeBadge />
       </div>
     </div>
   );

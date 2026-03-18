@@ -13,9 +13,18 @@
     "test:watch": "vitest",
     "desktop:dev": "tauri dev",
     "desktop:build": "tauri build",
-    "desktop:debug": "tauri build --debug"
+    "desktop:debug": "tauri build --debug",
+    "mobile:build": "npm run build && npx cap sync ios",
+    "mobile:ios": "npx cap open ios",
+    "mobile:dev": "npm run build && npx cap sync ios && npx cap open ios"
   },
   "dependencies": {
+    "@capacitor/core": "^8.2.0",
+    "@capacitor/haptics": "^8.0.1",
+    "@capacitor/ios": "^8.2.0",
+    "@capacitor/keyboard": "^8.0.1",
+    "@capacitor/splash-screen": "^8.0.1",
+    "@capacitor/status-bar": "^8.0.1",
     "@hookform/resolvers": "^3.10.0",
     "@lovable.dev/cloud-auth-js": "^0.0.3",
     "@radix-ui/react-accordion": "^1.2.11",
@@ -75,6 +84,7 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.2.0",
     "@eslint/js": "^9.32.0",
     "@playwright/test": "^1.57.0",
     "@tailwindcss/typography": "^0.5.16",

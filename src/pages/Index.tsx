@@ -381,7 +381,7 @@ const Index = () => {
   }, []);
 
   return (
-    <div className="h-screen flex bg-background overflow-hidden">
+    <div className="h-screen flex bg-background overflow-hidden safe-area-top safe-area-bottom">
         <TaskRail
           sessions={sessions}
           activeSessionId={activeSessionId}
