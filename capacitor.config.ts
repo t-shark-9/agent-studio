@@ -5,9 +5,6 @@ const config: CapacitorConfig = {
   appName: 'Agent Studio',
   webDir: 'dist',
   server: {
-    // In dev, point to local Vite server
-    // url: 'http://localhost:8081',
-    // cleartext: true,
     androidScheme: 'https',
     iosScheme: 'https',
   },

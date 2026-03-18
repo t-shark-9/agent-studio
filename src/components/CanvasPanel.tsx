@@ -72,7 +72,7 @@ export function CanvasPanel({ canvas, onClose, onAction }: CanvasPanelProps) {
         <iframe
           src={canvas.embedUrl}
           className="w-full h-full border-none"
-          sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+          sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-presentation"
           title={canvas.title}
         />
       </div>

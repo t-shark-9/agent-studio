@@ -1,14 +1,16 @@
 import { useState, useEffect, useRef, type KeyboardEvent } from 'react';
 import { motion } from 'framer-motion';
 import {
-  Send, Paperclip, Sparkles, Plane, UtensilsCrossed, Image,
+  Send, Paperclip, Plane, UtensilsCrossed, Image,
   Lightbulb, FileText, X, Video, ShoppingCart, Globe,
-  Mountain, Clapperboard, LayoutGrid, Cpu,
+  Mountain, Clapperboard, LayoutGrid, Cpu, ClipboardCheck,
   type LucideIcon,
 } from 'lucide-react';
+import { AgentStudioLogo } from '@/components/AgentStudioLogo';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+
 import { AGENT_MODELS } from '@/components/StatusBar';
 import type { AttachedFile } from './MessageComposer';
 import { getCachedTemplates, getTemplates, type TemplateData } from '@/lib/templateCache';
@@ -23,6 +25,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   'image': Image,
   'video': Video,
   'globe': Globe,
+  'clipboard-check': ClipboardCheck,
 };
 
 const FALLBACK_ICON: LucideIcon = LayoutGrid;
@@ -33,6 +36,7 @@ const DEFAULT_COLORS: Record<string, string> = {
   'video-generation': 'from-violet-500/20 to-purple-500/20',
   'grocery-shopping': 'from-green-500/20 to-emerald-500/20',
   'trip-planning': 'from-blue-500/20 to-cyan-500/20',
+  'attendance': 'from-red-500/20 to-orange-500/20',
 };
 
 interface UniformCard {
@@ -153,22 +157,22 @@ export function WelcomeScreen({ onSend, onUseTemplate, selectedModel, onModelCha
 
   return (
     <div className="h-full overflow-y-auto">
-      <div className="min-h-full flex flex-col items-center justify-center px-6 py-10">
+      <div className="min-h-full flex flex-col items-center justify-center px-4 sm:px-6 py-6 sm:py-10">
         {/* Greeting */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
-          className="text-center mb-8"
+          className="text-center mb-6 sm:mb-8"
         >
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-medium mb-5">
-            <Sparkles className="h-3 w-3" />
+            <AgentStudioLogo className="h-4 w-4" />
             Agent Studio
           </div>
-          <h1 className="text-3xl sm:text-4xl font-bold text-foreground mb-2">
+          <h1 className="text-2xl sm:text-4xl font-bold text-foreground mb-2">
             {GREETING}
           </h1>
-          <p className="text-base text-muted-foreground max-w-md mx-auto">
+          <p className="text-sm sm:text-base text-muted-foreground max-w-md mx-auto">
             What would you like to create today?
           </p>
         </motion.div>
@@ -178,7 +182,7 @@ export function WelcomeScreen({ onSend, onUseTemplate, selectedModel, onModelCha
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.1 }}
-          className="w-full max-w-2xl mb-8"
+          className="w-full max-w-2xl mb-6 sm:mb-8"
         >
           <div
             className={`rounded-2xl border bg-card shadow-lg transition-all duration-200 ${
@@ -215,7 +219,7 @@ export function WelcomeScreen({ onSend, onUseTemplate, selectedModel, onModelCha
               </div>
             )}
 
-            <div className="flex items-end gap-2 p-3">
+            <div className="flex items-end gap-2 p-2.5 sm:p-3">
               <Button
                 variant="ghost"
                 size="sm"
@@ -258,7 +262,7 @@ export function WelcomeScreen({ onSend, onUseTemplate, selectedModel, onModelCha
             <div className="flex items-center gap-1.5 px-3 pb-2">
               <Cpu className="h-3 w-3 text-muted-foreground" />
               <Select value={selectedModel} onValueChange={onModelChange}>
-                <SelectTrigger className="h-6 w-auto min-w-[130px] border-0 bg-transparent text-[11px] text-muted-foreground px-1 py-0 shadow-none hover:text-foreground">
+                <SelectTrigger className="h-6 w-full sm:w-auto min-w-0 sm:min-w-[130px] border-0 bg-transparent text-[11px] text-muted-foreground px-1 py-0 shadow-none hover:text-foreground max-w-[210px]">
                   <SelectValue>
                     {AGENT_MODELS.find(m => m.id === selectedModel)?.label || selectedModel}
                   </SelectValue>
@@ -281,7 +285,7 @@ export function WelcomeScreen({ onSend, onUseTemplate, selectedModel, onModelCha
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.2 }}
-          className="grid grid-cols-3 gap-3 w-full max-w-2xl mb-6"
+          className="grid grid-cols-2 lg:grid-cols-3 gap-3 w-full max-w-2xl mb-5 sm:mb-6"
         >
           {allCards.map((card, i) => (
             <motion.div
@@ -294,12 +298,12 @@ export function WelcomeScreen({ onSend, onUseTemplate, selectedModel, onModelCha
                 className="group cursor-pointer border-border hover:border-primary/40 bg-card hover:bg-primary/5 transition-all duration-300"
                 onClick={() => handleCardClick(card)}
               >
-                <CardContent className="p-4 text-center">
+                <CardContent className="p-3 sm:p-4 text-center">
                   <div className={`h-10 w-10 mx-auto rounded-xl bg-gradient-to-br ${card.color} flex items-center justify-center mb-2 group-hover:scale-110 transition-transform`}>
                     <card.icon className="h-5 w-5 text-primary" />
                   </div>
                   <h3 className="text-xs font-semibold text-foreground mb-0.5">{card.label}</h3>
-                  <p className="text-[10px] text-muted-foreground leading-relaxed">{card.description}</p>
+                  <p className="hidden sm:block text-[10px] text-muted-foreground leading-relaxed">{card.description}</p>
                 </CardContent>
               </Card>
             </motion.div>
@@ -311,7 +315,7 @@ export function WelcomeScreen({ onSend, onUseTemplate, selectedModel, onModelCha
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.6 }}
-          className="text-[11px] text-muted-foreground/50 flex items-center gap-1.5"
+          className="hidden sm:flex text-[11px] text-muted-foreground/50 items-center gap-1.5"
         >
           <Lightbulb className="h-3 w-3" />
           Agent Studio creates interactive visual experiences, not just text

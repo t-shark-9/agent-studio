@@ -1,28 +1,35 @@
 import { useState, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MessageSquare, Code2, Sparkles, Settings, Cpu, Link2 } from 'lucide-react';
-import { AGENT_MODELS } from '@/components/StatusBar';
+import { supabase } from '@/integrations/supabase/client';
+import { MessageSquare, Code2, Settings, Cpu, Send, Menu, Plus } from 'lucide-react';
+import { AgentStudioLogo } from '@/components/AgentStudioLogo';
+import { AGENT_MODELS, normalizeAgentModelId } from '@/components/StatusBar';
 import { TaskRail } from '@/components/TaskRail';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { CanvasEmbed } from '@/components/CanvasEmbed';
 import { BrowserView } from '@/components/BrowserView';
 import { CodeView } from '@/components/CodeView';
 import { CanvasSettings } from '@/components/CanvasSettings';
-import { ConnectedAccounts } from '@/components/ConnectedAccounts';
+import { GlobalHeader } from '@/components/GlobalHeader';
+import { AccountPage } from '@/components/AccountPage';
 import { FloatingChat } from '@/components/FloatingChat';
 import { WelcomeScreen } from '@/components/WelcomeScreen';
 import { AuthModal } from '@/components/AuthModal';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { refreshTemplateCache } from '@/components/CanvasHome';
 import { getCachedTemplate } from '@/lib/templateCache';
 import { useSessionManager } from '@/hooks/useSessionManager';
 import { detectIntent } from '@/hooks/useIntentDetection';
 import { useAgent } from '@/hooks/useAgent';
+import { toast } from 'sonner';
 import type { ContextType } from '@/types/chat';
 import type { AttachedFile } from '@/components/MessageComposer';
+import type { User } from '@supabase/supabase-js';
 
-type OverlayMode = 'none' | 'chat' | 'code' | 'settings' | 'connections';
+type OverlayMode = 'none' | 'chat' | 'code' | 'settings';
 
 const CANVAS_URL = import.meta.env.VITE_CANVAS_URL || '/canvas';
+const APP_SETTINGS_KEY = 'agent-studio.settings.v1';
 
 interface CanvasData {
   id: string;
@@ -32,15 +39,109 @@ interface CanvasData {
   templateId?: string;
 }
 
+interface AppSettings {
+  defaultModel: string;
+  defaultOverlay: Exclude<OverlayMode, 'none'>;
+  overlayWidth: number;
+  streamPreview: boolean;
+  compactMode: boolean;
+  reduceMotion: boolean;
+  confirmSessionDelete: boolean;
+  autoOpenSettingsAfterEdit: boolean;
+}
+
+function shouldRouteToVisibleBrowser(message: string): boolean {
+  return /(click|open|go to|navigate|search|find|scroll|type|fill|enter|press|submit|sign in|login|log in|use this page|this page|this site|what do you see|summari[sz]e)/i.test(message);
+}
+
+const DEFAULT_APP_SETTINGS: AppSettings = {
+  defaultModel: 'claude-sonnet-4.6',
+  defaultOverlay: 'code',
+  overlayWidth: 420,
+  streamPreview: true,
+  compactMode: false,
+  reduceMotion: false,
+  confirmSessionDelete: true,
+  autoOpenSettingsAfterEdit: false,
+};
+
+function loadAppSettings(): AppSettings {
+  try {
+    const raw = localStorage.getItem(APP_SETTINGS_KEY);
+    if (!raw) return DEFAULT_APP_SETTINGS;
+    const parsed = JSON.parse(raw) as Partial<AppSettings>;
+    return {
+      ...DEFAULT_APP_SETTINGS,
+      ...parsed,
+      defaultModel: normalizeAgentModelId(parsed.defaultModel || DEFAULT_APP_SETTINGS.defaultModel),
+    };
+  } catch {
+    return DEFAULT_APP_SETTINGS;
+  }
+}
+
 const Index = () => {
   const [showAuth, setShowAuth] = useState(false);
+  const [showAccount, setShowAccount] = useState(false);
+  const [accountInitialTab, setAccountInitialTab] = useState<'usage' | 'appearance' | 'account' | 'connections' | 'bluetooth' | 'plans'>('usage');
+  const [user, setUser] = useState<User | null>(null);
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' ? window.innerWidth < 768 : false);
+  const [mobileSessionsOpen, setMobileSessionsOpen] = useState(false);
+
+  useEffect(() => {
+    // Detect OAuth error redirects (Supabase puts errors in the URL hash)
+    const hash = window.location.hash;
+    const params = new URLSearchParams(hash.startsWith('#') ? hash.slice(1) : hash);
+    const oauthError = params.get('error_description') || params.get('error');
+    if (oauthError) {
+      toast.error(`Sign-in failed: ${decodeURIComponent(oauthError.replace(/\+/g, ' '))}`);
+      window.history.replaceState(null, '', window.location.pathname + window.location.search);
+    }
+
+    void supabase.auth.getSession().then(({ data }) => {
+      setUser(data.session?.user ?? null);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      const nextUser = session?.user ?? null;
+      setUser(nextUser);
+
+      if (event === 'SIGNED_IN') {
+        setShowAuth(false);
+        setAccountInitialTab('usage');
+        setShowAccount(true);
+      }
+      if (event === 'SIGNED_OUT') {
+        setShowAuth(false);
+        setShowAccount(false);
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(max-width: 767px)');
+    const updateMobile = (matches: boolean) => setIsMobile(matches);
+
+    updateMobile(mediaQuery.matches);
+    const handler = (event: MediaQueryListEvent) => updateMobile(event.matches);
+    mediaQuery.addEventListener('change', handler);
+    return () => mediaQuery.removeEventListener('change', handler);
+  }, []);
+  const isLoggedIn = !!user;
   const [railCollapsed, setRailCollapsed] = useState(true);
-  const [selectedModel, setSelectedModel] = useState('claude-sonnet-4.6');
+  const [appSettings, setAppSettings] = useState<AppSettings>(() => loadAppSettings());
+  const [selectedModel, setSelectedModel] = useState(() => loadAppSettings().defaultModel);
   const [activeCanvas, setActiveCanvas] = useState<CanvasData | null>(null);
   const [activeHtml, setActiveHtml] = useState<string | null>(null);
   const [streamingHtml, setStreamingHtml] = useState<string | null>(null);
   const [overlayMode, setOverlayMode] = useState<OverlayMode>('none');
+  const [overlayInput, setOverlayInput] = useState('');
   const [browserUrl, setBrowserUrl] = useState<string | null>(null);
+  const [browserSessionId, setBrowserSessionId] = useState<string | null>(null);
+  const [browserRefreshKey, setBrowserRefreshKey] = useState(0);
+  const [browserStatus, setBrowserStatus] = useState<string | null>(null);
+  const [browserBusy, setBrowserBusy] = useState(false);
 
   const {
     sessions,
@@ -58,7 +159,7 @@ const Index = () => {
     setMessages,
   } = useSessionManager();
 
-  const { streamResponse, streamEdit } = useAgent();
+  const { streamResponse, streamEdit, orchestrateBrowser } = useAgent();
   const [settingsVersion, setSettingsVersion] = useState(0);
 
   // Show welcome content when no active session
@@ -66,6 +167,36 @@ const Index = () => {
 
   // Canvas restore: only runs when explicitly switching to an existing session via sidebar
   const [restoreSessionId, setRestoreSessionId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const syncSettings = (incoming: Partial<AppSettings>) => {
+      setAppSettings(prev => ({ ...prev, ...incoming }));
+      if (incoming.defaultModel) {
+        setSelectedModel(incoming.defaultModel);
+      }
+    };
+
+    const customHandler = (event: Event) => {
+      const customEvent = event as CustomEvent<Partial<AppSettings>>;
+      if (customEvent.detail) syncSettings(customEvent.detail);
+    };
+
+    const storageHandler = (event: StorageEvent) => {
+      if (event.key !== APP_SETTINGS_KEY || !event.newValue) return;
+      try {
+        syncSettings(JSON.parse(event.newValue) as Partial<AppSettings>);
+      } catch {
+        // ignore
+      }
+    };
+
+    window.addEventListener('agent-studio:settings-changed', customHandler);
+    window.addEventListener('storage', storageHandler);
+    return () => {
+      window.removeEventListener('agent-studio:settings-changed', customHandler);
+      window.removeEventListener('storage', storageHandler);
+    };
+  }, []);
 
   useEffect(() => {
     if (!restoreSessionId || restoreSessionId !== activeSessionId) return;
@@ -142,6 +273,35 @@ const Index = () => {
 
     await addMessage('user', fullContent, Object.keys(metadata).length > 0 ? metadata : undefined, currentSessionId);
 
+    if (browserUrl && browserSessionId && shouldRouteToVisibleBrowser(content)) {
+      setIsLoading(true);
+      setBrowserBusy(true);
+      setBrowserStatus('Agent is reading the current page.');
+      setRailCollapsed(false);
+      setOverlayMode('chat');
+
+      try {
+        const result = await orchestrateBrowser(content, selectedModel, browserSessionId, {
+          onStep: (label) => setBrowserStatus(label),
+          onRefresh: () => setBrowserRefreshKey(key => key + 1),
+        });
+
+        const nextUrl = result.finalState?.metadata?.url;
+        if (nextUrl) {
+          setBrowserUrl(nextUrl);
+        }
+        setBrowserStatus(result.message);
+        await addMessage('assistant', result.message, { browser: { actions: result.actions } }, currentSessionId);
+      } catch {
+        setBrowserStatus('Browser orchestration failed.');
+        await addMessage('assistant', 'I could not complete that browser action on the current page.', undefined, currentSessionId);
+      }
+
+      setBrowserBusy(false);
+      setIsLoading(false);
+      return;
+    }
+
     const intent = detectIntent(content);
     let contextType: ContextType = activeSession?.context_type as ContextType || 'chat';
 
@@ -174,6 +334,10 @@ const Index = () => {
           browseTarget = 'https://www.youtube.com';
         }
         setBrowserUrl(browseTarget || 'https://www.google.com');
+        setBrowserSessionId(null);
+        setBrowserRefreshKey(0);
+        setBrowserBusy(false);
+        setBrowserStatus('Preparing browser session...');
         setActiveCanvas(null);
         setActiveHtml(null);
         setRailCollapsed(false);
@@ -197,13 +361,13 @@ const Index = () => {
             setActiveCanvas(canvas);
             setActiveHtml(null);
             setRailCollapsed(false);
-            setOverlayMode('code');
+            setOverlayMode(appSettings.defaultOverlay);
           },
           onChunk: (chunk) => {
             fullStream += chunk;
             // Extract HTML inside <canvas-ui> for the code panel
             const tagEnd = fullStream.indexOf('>', fullStream.indexOf('<canvas-ui'));
-            if (tagEnd >= 0) {
+            if (appSettings.streamPreview && tagEnd >= 0) {
               const htmlSoFar = fullStream.slice(tagEnd + 1).replace(/<\/canvas-ui>[\s\S]*$/, '');
               setStreamingHtml(htmlSoFar);
             }
@@ -226,7 +390,7 @@ const Index = () => {
       setStreamingHtml(null);
     }
     setIsLoading(false);
-  }, [activeSessionId, activeSession, addMessage, createSession, streamResponse, setIsLoading, updateSessionContext, selectedModel, extractTemplate]);
+  }, [activeSessionId, activeSession, addMessage, createSession, streamResponse, setIsLoading, updateSessionContext, selectedModel, extractTemplate, appSettings.defaultOverlay, appSettings.streamPreview, browserUrl, browserSessionId, orchestrateBrowser]);
 
   const handleUseTemplate = useCallback(async (templateId: string) => {
     const tpl = getCachedTemplate(templateId);
@@ -316,7 +480,7 @@ const Index = () => {
     await addMessage('user', content, undefined, currentSessionId);
     setIsLoading(true);
     setStreamingHtml(null);
-    setOverlayMode('code'); // Show code panel while editing
+    setOverlayMode(appSettings.defaultOverlay);
 
     let fullStream = '';
     try {
@@ -333,7 +497,7 @@ const Index = () => {
             const patchStart = fullStream.indexOf('<canvas-patch');
             if (patchStart >= 0) {
               const tagEnd = fullStream.indexOf('>', patchStart);
-              if (tagEnd >= 0) {
+              if (appSettings.streamPreview && tagEnd >= 0) {
                 const patchSoFar = fullStream.slice(tagEnd + 1).replace(/<\/canvas-patch>[\s\S]*$/, '');
                 setStreamingHtml(patchSoFar);
               }
@@ -347,6 +511,9 @@ const Index = () => {
       if (result.patch) {
         await addMessage('assistant', result.content, { edit: { label: result.label, description: result.description } }, currentSessionId);
         setSettingsVersion(v => v + 1); // Trigger settings panel refresh
+        if (appSettings.autoOpenSettingsAfterEdit) {
+          setOverlayMode('settings');
+        }
       } else {
         await addMessage('assistant', result.content, undefined, currentSessionId);
       }
@@ -355,22 +522,34 @@ const Index = () => {
       setStreamingHtml(null);
     }
     setIsLoading(false);
-  }, [activeCanvas, activeHtml, activeSessionId, addMessage, createSession, streamEdit, setIsLoading, selectedModel]);
+  }, [activeCanvas, activeHtml, activeSessionId, addMessage, createSession, streamEdit, setIsLoading, selectedModel, appSettings.defaultOverlay, appSettings.streamPreview, appSettings.autoOpenSettingsAfterEdit]);
 
   const handleNewSession = useCallback(() => {
+    setShowAccount(false);
+    setMobileSessionsOpen(false);
     setActiveSessionId(null);
     setActiveCanvas(null);
     setActiveHtml(null);
     setStreamingHtml(null);
     setBrowserUrl(null);
+    setBrowserSessionId(null);
+    setBrowserRefreshKey(0);
+    setBrowserBusy(false);
+    setBrowserStatus(null);
     setOverlayMode('none');
   }, [setActiveSessionId]);
 
   const handleSelectSession = useCallback((id: string) => {
+    setShowAccount(false);
+    setMobileSessionsOpen(false);
     setActiveSessionId(id);
     setActiveCanvas(null);
     setActiveHtml(null);
     setBrowserUrl(null);
+    setBrowserSessionId(null);
+    setBrowserRefreshKey(0);
+    setBrowserBusy(false);
+    setBrowserStatus(null);
     setMessages([]);
     setOverlayMode('none');
     setRestoreSessionId(id); // Trigger canvas restore after messages load
@@ -380,72 +559,146 @@ const Index = () => {
     setOverlayMode(prev => prev === mode ? 'none' : mode);
   }, []);
 
+  const handleOverlaySend = useCallback(async () => {
+    const message = overlayInput.trim();
+    if (!message || isLoading) return;
+
+    setOverlayInput('');
+    if (activeCanvas) {
+      await handleEditSend(message);
+      return;
+    }
+
+    await handleSend(message);
+  }, [overlayInput, isLoading, activeCanvas, handleEditSend, handleSend]);
+
   return (
-    <div className="h-screen flex bg-background overflow-hidden safe-area-top safe-area-bottom">
-        <TaskRail
-          sessions={sessions}
-          activeSessionId={activeSessionId}
-          collapsed={railCollapsed}
-          onToggleCollapse={() => setRailCollapsed(c => !c)}
-          onSelectSession={handleSelectSession}
-          onNewSession={handleNewSession}
-          onDeleteSession={deleteSession}
-          onAuthClick={() => setShowAuth(true)}
-        />
+    <div className="h-screen flex flex-col bg-background overflow-hidden safe-area-top safe-area-bottom">
+      <GlobalHeader
+        user={user}
+        onAuthClick={() => setShowAuth(true)}
+        onAccountClick={(tab) => { setAccountInitialTab((tab as typeof accountInitialTab) || 'usage'); setShowAccount(true); }}
+      />
+      {isMobile && (
+        <div className="h-12 border-b border-border bg-background/95 backdrop-blur-sm flex items-center gap-2 px-3 shrink-0 md:hidden">
+          <Sheet open={mobileSessionsOpen} onOpenChange={setMobileSessionsOpen}>
+            <SheetTrigger asChild>
+              <button className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-card px-3 text-xs font-medium text-foreground">
+                <Menu className="h-4 w-4" />
+                Chats
+              </button>
+            </SheetTrigger>
+            <SheetContent side="left" className="w-[86vw] max-w-none p-0">
+              <SheetHeader className="px-4 py-4 border-b border-border text-left">
+                <SheetTitle className="text-sm">Chats</SheetTitle>
+              </SheetHeader>
+              <div className="p-3 border-b border-border">
+                <button
+                  onClick={handleNewSession}
+                  className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-3 py-2.5 text-sm font-medium text-primary-foreground"
+                >
+                  <Plus className="h-4 w-4" />
+                  New Chat
+                </button>
+              </div>
+              <div className="max-h-[calc(100vh-10rem)] overflow-y-auto p-2 space-y-1">
+                {sessions.map(session => {
+                  const isActive = session.id === activeSessionId;
+
+                  return (
+                    <button
+                      key={session.id}
+                      onClick={() => handleSelectSession(session.id)}
+                      className={`w-full rounded-lg px-3 py-2.5 text-left text-sm transition-colors ${
+                        isActive ? 'bg-primary/10 text-primary' : 'bg-card text-foreground hover:bg-secondary'
+                      }`}
+                    >
+                      <div className="truncate font-medium">{session.title}</div>
+                      <div className="mt-0.5 text-[11px] text-muted-foreground uppercase tracking-wide">{session.context_type}</div>
+                    </button>
+                  );
+                })}
+              </div>
+            </SheetContent>
+          </Sheet>
+
+          <div className="min-w-0 flex-1 px-1">
+            <div className="truncate text-sm font-medium text-foreground">
+              {browserUrl ? 'Browser' : activeCanvas?.title || activeSession?.title || 'New Chat'}
+            </div>
+          </div>
+
+          <button
+            onClick={handleNewSession}
+            className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-card text-foreground"
+            title="New chat"
+          >
+            <Plus className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+      <div className="flex-1 flex min-h-0">
+        <div className="hidden md:flex">
+          <TaskRail
+            sessions={sessions}
+            activeSessionId={activeSessionId}
+            collapsed={railCollapsed}
+            onToggleCollapse={() => setRailCollapsed(c => !c)}
+            onSelectSession={handleSelectSession}
+            onNewSession={handleNewSession}
+            onDeleteSession={(id) => {
+              if (appSettings.confirmSessionDelete && !window.confirm('Delete this session permanently?')) {
+                return;
+              }
+              deleteSession(id);
+            }}
+            onAuthClick={() => isLoggedIn ? (setAccountInitialTab('usage'), setShowAccount(true)) : setShowAuth(true)}
+            userEmail={user?.email ?? null}
+          />
+        </div>
 
         {/* Main content — single unified area */}
         <div className="flex-1 flex flex-col min-w-0 relative">
           {/* Canvas/Browser title bar */}
-          {(activeCanvas || browserUrl) && (
-            <div className="h-10 border-b border-border flex items-center px-3 gap-1 shrink-0 bg-card/50 z-10">
+          {!showAccount && (activeCanvas || browserUrl) && (
+            <div className="h-11 border-b border-border flex items-center px-2 sm:px-3 gap-1 shrink-0 bg-card/50 z-10">
               <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <Sparkles className="h-3 w-3 text-primary" />
-                <span className="font-medium">{browserUrl ? 'Browser' : activeCanvas?.title}</span>
+                <AgentStudioLogo className="h-4 w-4" />
+                <span className="font-medium truncate max-w-[120px] sm:max-w-none">{browserUrl ? 'Browser' : activeCanvas?.title}</span>
               </div>
-              <div className="ml-auto flex items-center gap-1">
+              <div className="ml-auto flex items-center gap-1 overflow-x-auto">
                 <button
                   onClick={() => toggleOverlay('chat')}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                  className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
                     overlayMode === 'chat'
                       ? 'bg-primary text-primary-foreground shadow-sm'
                       : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
                   }`}
                 >
                   <MessageSquare className="h-3.5 w-3.5" />
-                  Chat
+                  <span className="hidden sm:inline">Chat</span>
                 </button>
                 <button
                   onClick={() => toggleOverlay('code')}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                  className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
                     overlayMode === 'code'
                       ? 'bg-primary text-primary-foreground shadow-sm'
                       : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
                   }`}
                 >
                   <Code2 className="h-3.5 w-3.5" />
-                  Code
+                  <span className="hidden sm:inline">Code</span>
                 </button>
                 <button
                   onClick={() => toggleOverlay('settings')}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                  className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
                     overlayMode === 'settings'
                       ? 'bg-primary text-primary-foreground shadow-sm'
                       : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
                   }`}
                 >
                   <Settings className="h-3.5 w-3.5" />
-                  Settings
-                </button>
-                <button
-                  onClick={() => toggleOverlay('connections')}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-                    overlayMode === 'connections'
-                      ? 'bg-primary text-primary-foreground shadow-sm'
-                      : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
-                  }`}
-                >
-                  <Link2 className="h-3.5 w-3.5" />
-                  Connect
+                  <span className="hidden sm:inline">Settings</span>
                 </button>
               </div>
             </div>
@@ -453,9 +706,21 @@ const Index = () => {
 
           {/* Content area */}
           <div className="flex-1 min-h-0 relative">
-            {/* Background layer: welcome content or canvas */}
+            {/* Background layer: account settings / welcome / canvas */}
             <AnimatePresence mode="wait">
-              {showWelcome && (
+              {showAccount && isLoggedIn && (
+                <motion.div
+                  key="account"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.15 }}
+                  className="h-full"
+                >
+                  <AccountPage initialTab={accountInitialTab} onClose={() => setShowAccount(false)} />
+                </motion.div>
+              )}
+              {!showAccount && showWelcome && (
                 <motion.div
                   key="welcome"
                   initial={{ opacity: 0 }}
@@ -473,7 +738,7 @@ const Index = () => {
                 </motion.div>
               )}
 
-              {activeCanvas && !browserUrl && (
+              {!showAccount && activeCanvas && !browserUrl && (
                 <motion.div
                   key={`canvas-${activeCanvas.id || 'srcdoc'}`}
                   initial={{ opacity: 0 }}
@@ -490,7 +755,7 @@ const Index = () => {
                 </motion.div>
               )}
 
-              {browserUrl && (
+              {!showAccount && browserUrl && (
                 <motion.div
                   key="browser"
                   initial={{ opacity: 0 }}
@@ -501,14 +766,23 @@ const Index = () => {
                 >
                   <BrowserView
                     initialUrl={browserUrl}
+                    refreshKey={browserRefreshKey}
+                    busy={browserBusy}
+                    statusText={browserStatus}
+                    onSessionReady={(sessionId) => {
+                      setBrowserSessionId(sessionId);
+                      setBrowserStatus('Browser session is live.');
+                    }}
                     onNavigate={(url, title) => {
+                      setBrowserUrl(url);
+                      setBrowserStatus(title ? `Viewing ${title}` : 'Browser updated.');
                       console.log('[Browser]', title, url);
                     }}
                   />
                 </motion.div>
               )}
 
-              {!showWelcome && !activeCanvas && !browserUrl && (
+              {!showAccount && !showWelcome && !activeCanvas && !browserUrl && (
                 <motion.div
                   key="waiting"
                   initial={{ opacity: 0 }}
@@ -518,7 +792,7 @@ const Index = () => {
                   className="h-full flex items-center justify-center"
                 >
                   <div className="text-center text-muted-foreground">
-                    <Sparkles className="h-8 w-8 mx-auto mb-3 animate-pulse text-primary/40" />
+                    <AgentStudioLogo className="h-8 w-8 mx-auto mb-3 animate-pulse opacity-40" />
                     <p className="text-sm">Working on it...</p>
                   </div>
                 </motion.div>
@@ -527,14 +801,15 @@ const Index = () => {
 
             {/* Chat/Code overlay panel */}
             <AnimatePresence>
-              {overlayMode !== 'none' && (activeCanvas || browserUrl) && (
+              {!showAccount && overlayMode !== 'none' && (activeCanvas || browserUrl) && (
                 <motion.div
                   key={overlayMode}
-                  initial={{ x: '100%', opacity: 0 }}
-                  animate={{ x: 0, opacity: 1 }}
-                  exit={{ x: '100%', opacity: 0 }}
+                  initial={isMobile ? { y: '100%', opacity: 0 } : { x: '100%', opacity: 0 }}
+                  animate={isMobile ? { y: 0, opacity: 1 } : { x: 0, opacity: 1 }}
+                  exit={isMobile ? { y: '100%', opacity: 0 } : { x: '100%', opacity: 0 }}
                   transition={{ duration: 0.2, ease: 'easeInOut' }}
-                  className="absolute inset-y-0 right-0 w-[400px] max-w-[80%] bg-card border-l border-border shadow-xl z-20 flex flex-col"
+                  className={`absolute bg-card shadow-xl z-20 flex flex-col ${isMobile ? 'inset-x-0 bottom-0 h-[72vh] rounded-t-2xl border-t border-border' : 'inset-y-0 right-0 max-w-[92vw] border-l border-border'}`}
+                  style={{ width: isMobile ? '100%' : `${appSettings.overlayWidth}px` }}
                 >
                   {overlayMode === 'chat' && (
                     <>
@@ -588,20 +863,27 @@ const Index = () => {
                       <div className="shrink-0 border-t border-border p-2">
                         <div className="flex gap-2 items-end">
                           <textarea
-                            placeholder="Edit this canvas..."
+                            value={overlayInput}
+                            onChange={e => setOverlayInput(e.target.value)}
+                            placeholder={activeCanvas ? 'Edit this canvas...' : 'Send a command...'}
                             className="flex-1 resize-none rounded-lg bg-secondary border border-border px-3 py-2 text-xs min-h-[36px] max-h-[80px] focus:outline-none focus:ring-1 focus:ring-primary"
                             rows={1}
+                            disabled={isLoading}
                             onKeyDown={e => {
                               if (e.key === 'Enter' && !e.shiftKey) {
                                 e.preventDefault();
-                                const target = e.target as HTMLTextAreaElement;
-                                if (target.value.trim()) {
-                                  handleEditSend(target.value.trim());
-                                  target.value = '';
-                                }
+                                void handleOverlaySend();
                               }
                             }}
                           />
+                          <button
+                            onClick={() => void handleOverlaySend()}
+                            disabled={!overlayInput.trim() || isLoading}
+                            className="h-9 w-9 shrink-0 rounded-lg bg-primary text-primary-foreground flex items-center justify-center disabled:opacity-40"
+                            title="Send"
+                          >
+                            <Send className="h-3.5 w-3.5" />
+                          </button>
                         </div>
                       </div>
                     </>
@@ -612,15 +894,12 @@ const Index = () => {
                   {overlayMode === 'settings' && (
                     <CanvasSettings canvasId={activeCanvas?.id || null} settingsVersion={settingsVersion} />
                   )}
-                  {overlayMode === 'connections' && (
-                    <ConnectedAccounts entityId={activeSessionId || 'anonymous'} />
-                  )}
                 </motion.div>
               )}
             </AnimatePresence>
 
             {/* Floating chat input — always present, starts centered on welcome, persists over canvas */}
-            {!showWelcome && (
+            {!showAccount && !showWelcome && (
               <FloatingChat
                 onSend={handleSend}
                 isLoading={isLoading}
@@ -631,6 +910,8 @@ const Index = () => {
             )}
           </div>
         </div>
+
+      </div>
 
       <AnimatePresence>
         {showAuth && <AuthModal onClose={() => setShowAuth(false)} />}

@@ -3,6 +3,7 @@ import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { ThemeProvider } from "next-themes";
 import { lazy, Suspense } from "react";
 
 // SEO pages (eager load for fast FCP)
@@ -18,11 +19,12 @@ const AppStudio = lazy(() => import("./pages/Index.tsx"));
 const queryClient = new QueryClient();
 
 const App = () => (
+  <ThemeProvider attribute="class" defaultTheme="dark" disableTransitionOnChange>
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
       <Toaster />
       <Sonner />
-      <BrowserRouter>
+      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <Routes>
           {/* SEO Landing Pages */}
           <Route path="/" element={<Landing />} />
@@ -53,6 +55,7 @@ const App = () => (
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>
+  </ThemeProvider>
 );
 
 export default App;

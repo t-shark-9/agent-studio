@@ -21,17 +21,28 @@ export function useSessionManager() {
   const browserToken = getOrCreateBrowserToken();
 
   const loadSessions = useCallback(async () => {
-    const { data } = await supabase
+    const { data: authData } = await supabase.auth.getUser();
+    const userId = authData?.user?.id || null;
+
+    const query = supabase
       .from('chat_sessions')
       .select('*')
-      .eq('session_token', browserToken)
       .order('updated_at', { ascending: false });
-    
+
+    if (userId) {
+      query.or(`session_token.eq.${browserToken},user_id.eq.${userId}`);
+    } else {
+      query.eq('session_token', browserToken);
+    }
+
+    const { data } = await query;
+
     if (data) {
-      setSessions(data as unknown as ChatSession[]);
+      const unique = new Map((data as unknown as ChatSession[]).map(session => [session.id, session]));
+      setSessions(Array.from(unique.values()));
       // Don't auto-select a session — let the welcome screen show first
     }
-  }, [browserToken, activeSessionId]);
+  }, [browserToken]);
 
   const loadMessages = useCallback(async (sessionId: string) => {
     const { data } = await supabase
@@ -108,7 +119,7 @@ export function useSessionManager() {
             { role: 'system', content: 'Generate a short chat session title (3-6 words, no quotes) for this user message. Reply with ONLY the title, nothing else.' },
             { role: 'user', content: cleaned.slice(0, 200) },
           ],
-          model: 'claude-sonnet-4-5-20250514',
+          model: 'claude-sonnet-4.6',
           max_tokens: 20,
         }),
       });
