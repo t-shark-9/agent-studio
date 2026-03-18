@@ -9,6 +9,20 @@ interface CanvasEmbedProps {
   onCanvasAction: (action: string, payload: Record<string, unknown>) => void;
 }
 
+// allow-same-origin is required for server-backed canvases (EventSource, DOM access).
+// srcdoc iframes use a tighter sandbox — no allow-same-origin — since the bridge
+// is inlined and the CSS link loads as no-cors (no credential sharing needed).
+const CANVAS_SANDBOX_SRC = 'allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-presentation';
+const CANVAS_SANDBOX_SRCDOC = 'allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-presentation';
+
+// Inlined so srcdoc iframes never need to fetch /canvas-bridge.js externally.
+const CANVAS_BRIDGE_INLINE = `
+window.canvasAction = function canvasAction(action, data) {
+  window.parent.postMessage({ type: 'canvas-action', action, data }, '*');
+};
+window.parent.postMessage({ type: 'canvas-ready', preview: true }, '*');
+`;
+
 function wrapHtml(html: string): string {
   return `<!DOCTYPE html>
 <html><head>
@@ -16,11 +30,7 @@ function wrapHtml(html: string): string {
 <link rel="stylesheet" href="/canvas/static/design-system.css">
 </head><body>
 <div id="canvas-root">${html}</div>
-<script>
-function canvasAction(action, data) {
-  window.parent.postMessage({ type: 'canvas-action', action, data }, '*');
-}
-</script>
+<script>${CANVAS_BRIDGE_INLINE}</script>
 </body></html>`;
 }
 
@@ -55,7 +65,7 @@ export function CanvasEmbed({ canvasId, html, onCanvasAction }: CanvasEmbedProps
           ref={iframeRef}
           srcDoc={wrapHtml(html)}
           className="w-full flex-1 border-0"
-          sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-presentation"
+          sandbox={CANVAS_SANDBOX_SRCDOC}
           allow="clipboard-write; autoplay; encrypted-media; fullscreen"
           title="Canvas Experience"
         />
@@ -64,7 +74,7 @@ export function CanvasEmbed({ canvasId, html, onCanvasAction }: CanvasEmbedProps
           ref={iframeRef}
           src={canvasId ? `/canvas/embed/${canvasId}` : 'about:blank'}
           className="w-full flex-1 border-0"
-          sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-presentation"
+          sandbox={CANVAS_SANDBOX_SRC}
           allow="clipboard-write; autoplay; encrypted-media; fullscreen"
           title="Canvas Experience"
         />

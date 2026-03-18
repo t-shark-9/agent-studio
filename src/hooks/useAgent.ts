@@ -1,8 +1,10 @@
 import { useCallback, useRef } from 'react';
 import type { ContextType } from '@/types/chat';
+import { appendUsageLog } from '@/lib/usageLog';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 const CANVAS_URL = import.meta.env.VITE_CANVAS_URL || '/canvas';
+const REQUEST_TIMEOUT_MS = 120000;
 
 interface Message {
   role: 'user' | 'assistant' | 'system';
@@ -34,6 +36,46 @@ interface StreamCallbacks {
   onComplete?: (response: AgentResponse) => void;
   onError?: (error: Error) => void;
   onCanvasStart?: (canvas: CanvasData) => void;
+}
+
+interface BrowserRuntimeState {
+  metadata?: {
+    title?: string;
+    url?: string;
+    description?: string | null;
+  };
+  state?: {
+    links?: Array<{ text?: string; href?: string }>;
+    buttons?: Array<{ text?: string; type?: string }>;
+    inputs?: Array<{ type?: string; name?: string; placeholder?: string; label?: string; value?: string }>;
+    textSnippet?: string;
+  };
+}
+
+interface BrowserPlanAction {
+  action: 'navigate' | 'clickLink' | 'focus' | 'type' | 'key' | 'scroll' | 'back' | 'forward' | 'wait';
+  url?: string;
+  text?: string;
+  href?: string;
+  key?: string;
+  y?: number;
+  ms?: number;
+}
+
+interface BrowserPlan {
+  message: string;
+  actions: BrowserPlanAction[];
+}
+
+interface BrowserExecutionResult {
+  message: string;
+  actions: BrowserPlanAction[];
+  finalState?: BrowserRuntimeState;
+}
+
+interface BrowserOrchestrationCallbacks {
+  onStep?: (label: string) => void;
+  onRefresh?: () => void;
 }
 
 const BROWSER_API = '/browser';
@@ -299,6 +341,120 @@ When the user asks to do something that involves a connected service (check emai
 2. Show the results in a beautiful visual layout
 3. If the service isn't connected, show a prompt to connect it via the "Connect" tab
 
+AUTOMATION & SCHEDULED TASKS:
+Agent Studio can create editable automations that run on schedules (via OpenClaw cron).
+When a user asks to "automate email responses", "schedule a daily report", "auto-reply to messages", etc.,
+create an interactive automation canvas with editable rules the user can customize.
+
+\`\`\`js
+// Create/manage automation rules
+async function createAutomation(rule) {
+  const res = await fetch('/integrations/automations', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(rule)
+  });
+  return await res.json();
+}
+
+async function listAutomations() {
+  const res = await fetch('/integrations/automations');
+  return (await res.json()).automations;
+}
+
+async function updateAutomation(id, updates) {
+  const res = await fetch('/integrations/automations/' + id, {
+    method: 'PATCH', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(updates)
+  });
+  return await res.json();
+}
+
+async function deleteAutomation(id) {
+  await fetch('/integrations/automations/' + id, { method: 'DELETE' });
+}
+
+// Example rule shape:
+// {
+//   name: "Auto-reply to emails",
+//   trigger: { type: "cron", schedule: "*/5 * * * *" },  // every 5 min
+//   action: { type: "composio", action: "GMAIL_SEND_EMAIL", params: {...} },
+//   condition: { field: "subject", contains: "support" },  // optional filter
+//   enabled: true
+// }
+//
+// Trigger types: "cron" (scheduled), "webhook" (event-driven), "manual"
+// Action types: "composio" (service action), "notify" (send notification), "canvas" (show UI)
+\`\`\`
+
+When the user asks to automate something, create a BEAUTIFUL automation builder canvas with:
+1. A list of current automation rules with toggle switches to enable/disable
+2. Editable fields for each rule: name, schedule (human-readable), conditions, action
+3. "Add Rule" button to create new automations
+4. Visual indicators: green dot = active, red = paused, clock icon for schedule
+5. Real-time status showing last run time and next scheduled run
+6. Use the design system cards (.as-card), toggles, and layout classes
+
+For email automation specifically:
+- Show inbox preview (fetch recent emails via GMAIL_LIST_EMAILS)
+- Let user define reply rules: "If subject contains X → reply with Y"
+- Show auto-reply templates the user can edit
+- Toggle individual rules on/off
+- Show execution log (which emails were auto-replied)
+
+VIDEO GENERATION — REAL AI VIDEO:
+Agent Studio can generate actual AI videos via the /video API (powered by Kie.ai, Replicate, Google Veo, Kling, Sora, etc.)
+
+When the user asks to create/generate a video, create a canvas with a video generation UI:
+
+\`\`\`js
+// Available models (call GET /video/models for full list):
+// veo3 (default, best quality), kling3 (native audio), seedance, sora, hailuo, minimax, runway, etc.
+
+async function generateVideo(prompt, model = 'veo3', options = {}) {
+  const statusEl = document.getElementById('status');
+  statusEl.textContent = 'Generating video... (this may take 1-5 minutes)';
+
+  const res = await fetch('/video/generate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      prompt,
+      model,
+      aspect_ratio: options.aspect_ratio || '16:9',
+      duration: options.duration || 5,
+      sound: options.sound || false,
+    })
+  });
+  const data = await res.json();
+  if (data.success) {
+    statusEl.textContent = 'Video ready! (' + data.elapsed + 's)';
+    const video = document.getElementById('video-player');
+    video.src = data.url;
+    video.style.display = 'block';
+  } else {
+    statusEl.textContent = 'Error: ' + data.error;
+  }
+}
+
+// Image-to-video (continuation from still image):
+// POST /video/generate with { prompt, model: 'veo3', startImage: 'https://...' }
+
+// Chain videos (continue from last frame of previous video):
+// POST /video/chain with { videoPath: '/path/to/video.mp4', prompt: 'next scene...' }
+
+// Generate still images:
+// POST /video/generate-image with { prompt, model: 'flux-1.1-pro' }
+\`\`\`
+
+Video canvas pattern:
+- Show a prompt input field and model selector dropdown
+- Show a "Generate" button
+- Show a status/progress area
+- When done, show the video in a <video> player with controls
+- Add "Download" button linking to data.url
+- Add "Continue" button for video chaining
+- Make it visually stunning with dark theme
+
 WHEN TO USE PLAIN TEXT (rare):
 - Only for very short confirmations ("Done", "Got it")
 - When the user explicitly says "just text" or "no UI"
@@ -308,12 +464,64 @@ IMPORTANT: The canvas-ui content should be COMPLETE, standalone HTML. Include AL
 export function useAgent() {
   const abortControllerRef = useRef<AbortController | null>(null);
 
+  const parseJsonObject = useCallback((raw: string): BrowserPlan | null => {
+    const trimmed = raw.trim();
+    if (!trimmed) return null;
+
+    const candidates = [trimmed];
+    const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
+    if (fenced?.[1]) candidates.push(fenced[1].trim());
+    const firstBrace = trimmed.indexOf('{');
+    const lastBrace = trimmed.lastIndexOf('}');
+    if (firstBrace >= 0 && lastBrace > firstBrace) {
+      candidates.push(trimmed.slice(firstBrace, lastBrace + 1));
+    }
+
+    for (const candidate of candidates) {
+      try {
+        return JSON.parse(candidate) as BrowserPlan;
+      } catch {
+        // try next candidate
+      }
+    }
+
+    return null;
+  }, []);
+
+  const fetchWithTimeout = useCallback(async (url: string, init: RequestInit = {}) => {
+    const timeoutController = new AbortController();
+    let didTimeout = false;
+    const timeoutId = window.setTimeout(() => {
+      didTimeout = true;
+      timeoutController.abort();
+    }, REQUEST_TIMEOUT_MS);
+
+    const callerSignal = init.signal;
+    const onAbort = () => timeoutController.abort();
+    callerSignal?.addEventListener('abort', onAbort, { once: true });
+
+    try {
+      return await fetch(url, {
+        ...init,
+        signal: timeoutController.signal,
+      });
+    } catch (error) {
+      if (didTimeout) {
+        throw new Error('Request timed out');
+      }
+      throw error;
+    } finally {
+      window.clearTimeout(timeoutId);
+      callerSignal?.removeEventListener('abort', onAbort);
+    }
+  }, []);
+
   const getSystemPrompt = (contextType: ContextType): string => {
     const contextHints: Record<ContextType, string> = {
       chat: '',
       trip: '\nThe user is in TRIP PLANNING mode. Prioritize visual travel experiences.',
       booking: '\nThe user is in RESTAURANT BOOKING mode. Show restaurant options visually.',
-      media: '\nThe user is in MEDIA CREATION mode. Show media creation tools visually.',
+      media: '\nThe user is in MEDIA CREATION mode. For VIDEO generation, use the /video/generate API (POST with prompt, model, aspect_ratio, duration, sound). Show a video generation canvas with prompt input, model selector, generate button, and video player. For IMAGE generation, use /video/generate-image API.',
       browse: '\nThe user wants to BROWSE THE WEB. Create a browser canvas with navigation. For YouTube, embed the video directly. For other sites, use the /browser/browse API to screenshot and display pages.',
     };
     return CANVAS_SYSTEM_PROMPT + (contextHints[contextType] || '');
@@ -370,7 +578,7 @@ export function useAgent() {
     ];
 
     try {
-      const response = await fetch(`${API_URL}/chat/completions`, {
+      const response = await fetchWithTimeout(`${API_URL}/chat/completions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -495,11 +703,13 @@ export function useAgent() {
         const text = [textBefore, textAfter].filter(Boolean).join('\n\n') || `Here's your ${title}:`;
 
         const result: AgentResponse = { type: 'canvas', content: text, canvas: liveCanvas || undefined };
+        appendUsageLog({ type: 'canvas', model, preview: messages[messages.length - 1]?.content?.slice(0, 80) ?? '' });
         callbacks?.onComplete?.(result);
         return result;
       }
 
       const result: AgentResponse = { type: 'text', content: fullResponse };
+      appendUsageLog({ type: 'chat', model, preview: messages[messages.length - 1]?.content?.slice(0, 80) ?? '' });
       callbacks?.onComplete?.(result);
       return result;
     } catch (error) {
@@ -572,7 +782,7 @@ PATCH RULES:
     ];
 
     try {
-      const response = await fetch(`${API_URL}/chat/completions`, {
+      const response = await fetchWithTimeout(`${API_URL}/chat/completions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ messages, model, stream: true }),
@@ -660,11 +870,160 @@ PATCH RULES:
       }
       throw error;
     }
-  }, []);
+  }, [fetchWithTimeout]);
 
   const abort = useCallback(() => {
     abortControllerRef.current?.abort();
   }, []);
+
+  const orchestrateBrowser = useCallback(async (
+    userMessage: string,
+    model: string,
+    sessionId: string,
+    callbacks?: BrowserOrchestrationCallbacks
+  ): Promise<BrowserExecutionResult> => {
+    const browserStateRes = await fetchWithTimeout(`${BROWSER_API}/browse/state`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionId, screenshot: false }),
+    });
+
+    if (!browserStateRes.ok) {
+      throw new Error(`Browser state error: ${browserStateRes.status}`);
+    }
+
+    const browserState = await browserStateRes.json() as BrowserRuntimeState & { success?: boolean };
+
+    const browserPlannerPrompt = `You are controlling a live remote browser for the user.
+The user can see the browser session in the same Agent Studio window while you act.
+Plan a SHORT sequence of actions against the current page state.
+
+Rules:
+- Return JSON only.
+- Use at most 5 actions.
+- Prefer clickLink by exact href or visible link text.
+- Use focus before type when targeting a field.
+- Use key for Enter, Tab, Backspace, Escape.
+- Use navigate only when the user wants a new URL or search.
+- If no browser action is needed, return an empty actions array and explain in message.
+- Never invent selectors. Only use the provided page summary.
+
+Allowed action schema:
+{
+  "message": "short assistant reply",
+  "actions": [
+    { "action": "navigate", "url": "https://..." },
+    { "action": "clickLink", "text": "Pricing" },
+    { "action": "clickLink", "href": "https://..." },
+    { "action": "focus", "text": "Search" },
+    { "action": "type", "text": "browserless" },
+    { "action": "key", "key": "Enter" },
+    { "action": "scroll", "y": 700 },
+    { "action": "back" },
+    { "action": "forward" },
+    { "action": "wait", "ms": 1200 }
+  ]
+}`;
+
+    const plannerResponse = await fetchWithTimeout(`${API_URL}/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model,
+        stream: false,
+        messages: [
+          { role: 'system', content: browserPlannerPrompt },
+          {
+            role: 'user',
+            content: `Current browser state:\n${JSON.stringify(browserState, null, 2)}\n\nUser request:\n${userMessage}`,
+          },
+        ],
+      }),
+    });
+
+    if (!plannerResponse.ok) {
+      throw new Error(`Browser planner error: ${plannerResponse.status}`);
+    }
+
+    const plannerData = await plannerResponse.json();
+    const plannerContent = plannerData.choices?.[0]?.message?.content || plannerData.choices?.[0]?.text || '';
+    const parsedPlan = parseJsonObject(plannerContent);
+
+    const fallbackPlan = (): BrowserPlan => {
+      const maybeUrl = userMessage.match(/https?:\/\/[^\s]+/)?.[0];
+      if (maybeUrl) {
+        return {
+          message: `Opening ${maybeUrl} in the current browser.`,
+          actions: [{ action: 'navigate', url: maybeUrl }],
+        };
+      }
+      if (/\b(back|go back|previous page)\b/i.test(userMessage)) {
+        return { message: 'Going back in the current browser.', actions: [{ action: 'back' }] };
+      }
+      if (/\b(forward|next page)\b/i.test(userMessage)) {
+        return { message: 'Going forward in the current browser.', actions: [{ action: 'forward' }] };
+      }
+      if (/\bscroll down\b/i.test(userMessage)) {
+        return { message: 'Scrolling down.', actions: [{ action: 'scroll', y: 900 }] };
+      }
+      if (/\bscroll up\b/i.test(userMessage)) {
+        return { message: 'Scrolling up.', actions: [{ action: 'scroll', y: -900 }] };
+      }
+      return {
+        message: 'I inspected the current page, but I need a more specific browser instruction.',
+        actions: [],
+      };
+    };
+
+    const plan = parsedPlan && Array.isArray(parsedPlan.actions) ? parsedPlan : fallbackPlan();
+    const actions = plan.actions.slice(0, 5);
+    let finalState: BrowserRuntimeState | undefined = browserState;
+
+    for (const step of actions) {
+      callbacks?.onStep?.(`Agent action: ${step.action}${step.text ? ` ${step.text}` : step.url ? ` ${step.url}` : ''}`);
+
+      if (step.action === 'wait') {
+        await new Promise((resolve) => window.setTimeout(resolve, Math.max(200, Math.min(step.ms || 1200, 5000))));
+        continue;
+      }
+
+      let response: Response;
+
+      if (step.action === 'navigate') {
+        response = await fetchWithTimeout(`${BROWSER_API}/browse`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sessionId, url: step.url || step.text }),
+        });
+      } else if (step.action === 'type' || step.action === 'key') {
+        response = await fetchWithTimeout(`${BROWSER_API}/browse/keyboard`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sessionId, text: step.action === 'type' ? step.text : undefined, key: step.action === 'key' ? step.key : undefined }),
+        });
+      } else {
+        response = await fetchWithTimeout(`${BROWSER_API}/browse/interact`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sessionId, ...step }),
+        });
+      }
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Browser action failed (${step.action}): ${errorText}`);
+      }
+
+      finalState = await response.json() as BrowserRuntimeState;
+      callbacks?.onRefresh?.();
+    }
+
+    return {
+      message: plan.message || 'Done.',
+      actions,
+      finalState,
+    };
+  }, [API_URL, BROWSER_API, fetchWithTimeout, parseJsonObject]);
 
   const getResponse = useCallback(async (
     message: string,
@@ -676,5 +1035,5 @@ PATCH RULES:
     return streamResponse(message, contextType, model, history, { onCanvasStart });
   }, [streamResponse]);
 
-  return { getResponse, streamResponse, streamEdit, abort };
+  return { getResponse, streamResponse, streamEdit, orchestrateBrowser, abort };
 }

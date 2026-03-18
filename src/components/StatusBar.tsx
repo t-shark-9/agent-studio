@@ -1,5 +1,18 @@
 import { motion } from 'framer-motion';
-import { Sparkles } from 'lucide-react';
+import { AgentStudioLogo } from '@/components/AgentStudioLogo';
+
+export function normalizeAgentModelId(modelId: string): string {
+  switch (modelId) {
+    case 'claude-sonnet-4-6':
+      return 'claude-sonnet-4.6';
+    case 'claude-opus-4-6':
+      return 'claude-opus-4.6';
+    case 'claude-haiku-4-5':
+      return 'claude-haiku-4.5';
+    default:
+      return modelId;
+  }
+}
 
 export const AGENT_MODELS = [
   { id: 'claude-sonnet-4.6', label: 'Claude Sonnet 4.6', provider: 'Anthropic' },
@@ -19,7 +32,7 @@ export function StatusBar() {
           animate={{ opacity: [1, 0.4, 1] }}
           transition={{ duration: 2, repeat: Infinity }}
         />
-        <Sparkles className="h-3.5 w-3.5 text-primary" />
+        <AgentStudioLogo className="h-4 w-4" />
         <span className="text-xs font-mono text-primary font-semibold tracking-wide">AGENT STUDIO</span>
       </div>
     </div>

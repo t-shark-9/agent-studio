@@ -1,6 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { Link2, Unlink, ExternalLink, RefreshCw, AlertCircle } from 'lucide-react';
+import { toast } from 'sonner';
+import { ServiceIcon } from '@/components/ServiceIcons';
+import { useComposioConnections } from '@/hooks/useComposioConnections';
 
 const INTEGRATIONS_API = '/integrations';
 
@@ -25,43 +28,34 @@ interface ConnectedAccountsProps {
 
 export function ConnectedAccounts({ entityId }: ConnectedAccountsProps) {
   const [apps, setApps] = useState<AppInfo[]>([]);
-  const [connections, setConnections] = useState<Connection[]>([]);
-  const [configured, setConfigured] = useState(true);
-  const [loading, setLoading] = useState(true);
   const [connecting, setConnecting] = useState<string | null>(null);
+  const { connections, configured, loading, refresh } = useComposioConnections(entityId, {
+    pollIntervalMs: 15000,
+  });
 
-  const fetchData = useCallback(async () => {
-    setLoading(true);
+  const fetchApps = useCallback(async () => {
     try {
-      const [appsRes, connsRes] = await Promise.all([
-        fetch(`${INTEGRATIONS_API}/apps`),
-        fetch(`${INTEGRATIONS_API}/connections/${entityId}`),
-      ]);
+      const appsRes = await fetch(`${INTEGRATIONS_API}/apps`);
       const appsData = await appsRes.json();
-      const connsData = await connsRes.json();
       setApps(appsData.apps || []);
-      setConnections(connsData.connections || []);
-      setConfigured(connsData.configured !== false);
     } catch {
-      // Service not running
-      setConfigured(false);
+      toast.error('Failed to load available Composio apps');
     }
-    setLoading(false);
-  }, [entityId]);
+  }, []);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => { void fetchApps(); }, [fetchApps]);
 
   // Listen for OAuth callback
   useEffect(() => {
     const handler = (e: MessageEvent) => {
       if (e.data?.type === 'composio-callback') {
-        fetchData();
+        void refresh();
         setConnecting(null);
       }
     };
     window.addEventListener('message', handler);
     return () => window.removeEventListener('message', handler);
-  }, [fetchData]);
+  }, [refresh]);
 
   const handleConnect = async (appName: string) => {
     setConnecting(appName);
@@ -77,29 +71,38 @@ export function ConnectedAccounts({ entityId }: ConnectedAccountsProps) {
       });
       const data = await res.json();
       if (data.redirectUrl) {
+        const appLabel = apps.find(app => app.id === appName)?.name || appName;
+        toast(`Continue in the popup to connect ${appLabel}`);
         // Open OAuth in popup
         const popup = window.open(data.redirectUrl, 'composio-oauth', 'width=600,height=700,left=200,top=100');
         // Poll for popup close
         const interval = setInterval(() => {
           if (popup?.closed) {
             clearInterval(interval);
-            fetchData();
+            void refresh();
             setConnecting(null);
           }
         }, 500);
       } else {
+        toast.error('Connection could not be started');
         setConnecting(null);
       }
     } catch {
+      toast.error('Failed to start connection');
       setConnecting(null);
     }
   };
 
   const handleDisconnect = async (connectionId: string) => {
     try {
-      await fetch(`${INTEGRATIONS_API}/connections/${connectionId}`, { method: 'DELETE' });
-      fetchData();
-    } catch { /* */ }
+      const connection = connections.find(conn => conn.id === connectionId);
+      const response = await fetch(`${INTEGRATIONS_API}/connections/${connectionId}`, { method: 'DELETE' });
+      if (!response.ok) throw new Error('Failed to disconnect connection');
+      toast.success(`${apps.find(app => app.id === connection?.app)?.name || connection?.app || 'Service'} disconnected`);
+      await refresh();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to disconnect connection');
+    }
   };
 
   const connectedAppNames = new Set(connections.filter(c => c.status === 'active').map(c => c.app));
@@ -146,7 +149,7 @@ export function ConnectedAccounts({ entityId }: ConnectedAccountsProps) {
             Connect your services so Agent Studio can work with your data
           </p>
         </div>
-        <button onClick={fetchData} className="p-1.5 rounded hover:bg-secondary text-muted-foreground">
+        <button onClick={() => void refresh()} className="p-1.5 rounded hover:bg-secondary text-muted-foreground">
           <RefreshCw className="h-3.5 w-3.5" />
         </button>
       </div>
@@ -160,7 +163,7 @@ export function ConnectedAccounts({ entityId }: ConnectedAccountsProps) {
             return (
               <div key={conn.id} className="flex items-center justify-between p-2.5 rounded-lg bg-primary/5 border border-primary/20">
                 <div className="flex items-center gap-2.5">
-                  <span className="text-lg">{app?.icon || '🔗'}</span>
+                  <ServiceIcon id={conn.app} className="h-5 w-5" />
                   <div>
                     <p className="text-xs font-medium text-foreground">{app?.name || conn.app}</p>
                     <p className="text-[10px] text-green-500">Connected</p>
@@ -191,7 +194,7 @@ export function ConnectedAccounts({ entityId }: ConnectedAccountsProps) {
             {catApps.map(app => (
               <div key={app.id} className="flex items-center justify-between p-2.5 rounded-lg bg-secondary/50 hover:bg-secondary transition-colors">
                 <div className="flex items-center gap-2.5">
-                  <span className="text-lg">{app.icon}</span>
+                  <ServiceIcon id={app.id} className="h-5 w-5" />
                   <div>
                     <p className="text-xs font-medium text-foreground">{app.name}</p>
                     <p className="text-[10px] text-muted-foreground">{app.description}</p>

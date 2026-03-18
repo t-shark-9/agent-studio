@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { motion, useDragControls } from 'framer-motion';
-import { Send, Paperclip, GripVertical, Maximize2, Minimize2, FileText, X, Sparkles, Cpu } from 'lucide-react';
+import { Send, Paperclip, GripVertical, Maximize2, Minimize2, FileText, X, Cpu } from 'lucide-react';
+import { AgentStudioLogo } from '@/components/AgentStudioLogo';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { AGENT_MODELS } from '@/components/StatusBar';
 import type { AttachedFile } from './MessageComposer';
@@ -78,7 +79,7 @@ export function FloatingChat({ onSend, isLoading, startCentered, selectedModel, 
           dragMomentum={false}
           dragConstraints={constraintsRef}
           dragListener={false}
-          className="absolute bottom-6 right-6 z-50"
+          className="absolute bottom-3 right-3 sm:bottom-6 sm:right-6 z-50"
         >
           <motion.div
             initial={{ opacity: 0, scale: 0.9 }}
@@ -96,7 +97,7 @@ export function FloatingChat({ onSend, isLoading, startCentered, selectedModel, 
               onChange={e => setInput(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleSend(); } }}
               placeholder="Ask anything..."
-              className="bg-transparent text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none w-[200px]"
+              className="bg-transparent text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none w-[160px] sm:w-[200px]"
               disabled={isLoading}
             />
             <button
@@ -130,8 +131,8 @@ export function FloatingChat({ onSend, isLoading, startCentered, selectedModel, 
         dragListener={false}
         initial={startCentered ? { opacity: 0, y: 20 } : { opacity: 0 }}
         animate={{ opacity: 1, y: 0 }}
-        className={`absolute z-50 ${startCentered ? 'inset-x-0 top-[30%] mx-auto' : 'bottom-6 left-1/2 -translate-x-1/2'}`}
-        style={{ width: 'min(95%, 640px)' }}
+        className={`absolute z-50 ${startCentered ? 'inset-x-3 sm:inset-x-0 top-[24%] sm:top-[30%] mx-auto' : 'inset-x-3 bottom-3 sm:bottom-6 sm:left-1/2 sm:inset-x-auto sm:-translate-x-1/2'}`}
+        style={{ width: 'min(calc(100vw - 1.5rem), 640px)' }}
       >
         <div
           className={`rounded-2xl border bg-card/95 backdrop-blur-md shadow-2xl transition-all duration-200 ${
@@ -143,13 +144,13 @@ export function FloatingChat({ onSend, isLoading, startCentered, selectedModel, 
           {/* Drag handle + minimize */}
           <div
             onPointerDown={e => dragControls.start(e)}
-            className="flex items-center justify-between px-3 py-1.5 cursor-grab active:cursor-grabbing select-none"
+            className="hidden sm:flex items-center justify-between px-3 py-1.5 cursor-grab active:cursor-grabbing select-none"
           >
             <div className="flex items-center gap-1.5">
               <GripVertical className="h-3.5 w-3.5 text-muted-foreground/30" />
               {isLoading && (
                 <div className="flex items-center gap-1.5 text-[11px] text-primary animate-pulse">
-                  <Sparkles className="h-3 w-3" />
+                  <AgentStudioLogo className="h-3.5 w-3.5" />
                   Generating...
                 </div>
               )}
@@ -233,7 +234,7 @@ export function FloatingChat({ onSend, isLoading, startCentered, selectedModel, 
           <div className="flex items-center gap-1.5 px-3 pb-2">
             <Cpu className="h-3 w-3 text-muted-foreground" />
             <Select value={selectedModel} onValueChange={onModelChange}>
-              <SelectTrigger className="h-6 w-auto min-w-[130px] border-0 bg-transparent text-[11px] text-muted-foreground px-1 py-0 shadow-none hover:text-foreground">
+              <SelectTrigger className="h-6 w-full sm:w-auto min-w-0 sm:min-w-[130px] border-0 bg-transparent text-[11px] text-muted-foreground px-1 py-0 shadow-none hover:text-foreground max-w-[210px]">
                 <SelectValue>
                   {AGENT_MODELS.find(m => m.id === selectedModel)?.label || selectedModel}
                 </SelectValue>

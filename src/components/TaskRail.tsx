@@ -1,8 +1,6 @@
-import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Plus, MessageSquare, Plane, UtensilsCrossed, Image, Trash2, ChevronLeft, ChevronRight, LogIn, LogOut } from 'lucide-react';
+import { Plus, MessageSquare, Plane, UtensilsCrossed, Image, Trash2, ChevronLeft, ChevronRight, LogIn, UserCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { supabase } from '@/integrations/supabase/client';
 import type { ChatSession, ContextType } from '@/types/chat';
 
 const CONTEXT_ICONS: Record<ContextType, React.ElementType> = {
@@ -21,6 +19,7 @@ interface TaskRailProps {
   onNewSession: () => void;
   onDeleteSession: (id: string) => void;
   onAuthClick: () => void;
+  userEmail: string | null;
 }
 
 export function TaskRail({
@@ -32,16 +31,8 @@ export function TaskRail({
   onNewSession,
   onDeleteSession,
   onAuthClick,
+  userEmail,
 }: TaskRailProps) {
-  const [user, setUser] = useState<{ email?: string } | null>(null);
-
-  useEffect(() => {
-    supabase.auth.onAuthStateChange((_, session) => {
-      setUser(session?.user ?? null);
-    });
-    supabase.auth.getUser().then(({ data }) => setUser(data.user));
-  }, []);
-
   return (
     <motion.div
       className="bg-card border-r border-border flex flex-col shrink-0 overflow-hidden"
@@ -106,23 +97,19 @@ export function TaskRail({
         })}
       </div>
 
-      {/* Sign in / account — bottom of rail */}
+      {/* Account — bottom of rail */}
       <div className="p-2 border-t border-border">
-        {user ? (
-          <div className={`flex items-center gap-2 ${collapsed ? 'justify-center' : ''}`}>
-            {!collapsed && (
-              <span className="text-[10px] text-muted-foreground truncate flex-1">{user.email}</span>
-            )}
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 w-7 p-0 shrink-0"
-              onClick={() => supabase.auth.signOut()}
-              title="Sign Out"
-            >
-              <LogOut className="h-3.5 w-3.5 text-muted-foreground" />
-            </Button>
-          </div>
+        {userEmail ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            className={`h-8 text-xs gap-1.5 text-muted-foreground hover:text-foreground ${collapsed ? 'w-full justify-center p-0' : 'w-full justify-start'}`}
+            onClick={onAuthClick}
+            title="Account"
+          >
+            <UserCircle className="h-3.5 w-3.5 shrink-0" />
+            {!collapsed && <span className="truncate">{userEmail}</span>}
+          </Button>
         ) : (
           <Button
             variant="ghost"
