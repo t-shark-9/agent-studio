@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 /**
  * Native runtime bridge for Tauri desktop & Capacitor mobile.
  * Provides type-safe access to native capabilities.
@@ -9,13 +8,33 @@ import { Capacitor } from '@capacitor/core';
 
 type RuntimePlatform = 'desktop' | 'ios' | 'web';
 
-const isTauri = () => '__TAURI__' in window;
+export type DesktopCommandResult = {
+  stdout: string;
+  stderr: string;
+  exitCode: number;
+};
+
+const isWindowDefined = typeof window !== 'undefined';
+const isTauri = () => isWindowDefined && ('__TAURI__' in window || '__TAURI_INTERNALS__' in window);
 const isCapacitor = () => Capacitor.isNativePlatform();
 
 function detectPlatform(): RuntimePlatform {
   if (isTauri()) return 'desktop';
   if (isCapacitor()) return 'ios';
   return 'web';
+}
+
+export function isTauriDesktop(): boolean {
+  return isTauri();
+}
+
+export async function runDesktopCommand(command: string, args: string[] = []): Promise<DesktopCommandResult> {
+  if (!isTauriDesktop()) {
+    throw new Error('Desktop command execution is only available in the downloadable desktop app.');
+  }
+
+  const { invoke } = await import('@tauri-apps/api/core');
+  return invoke<DesktopCommandResult>('run_terminal_command', { command, args });
 }
 
 interface TauriInvoke {
@@ -31,39 +50,27 @@ function getInvoke(): TauriInvoke | null {
 }
 
 export const nativeRuntime = {
-  /** Current platform: 'desktop' (Tauri), 'ios' (Capacitor), or 'web' (browser). */
   platform: detectPlatform(),
-
-  /** True when running inside Tauri (desktop). */
   isDesktop: isTauri(),
-
-  /** True when running inside Capacitor (iOS). */
   isMobile: isCapacitor(),
-
-  /** True when running in plain browser. */
   isWeb: !isTauri() && !isCapacitor(),
-
-  /** Whether the runtime supports local terminal/shell access. */
   hasTerminal: isTauri(),
 
-  /** Get the current OS platform string. */
   async getPlatform(): Promise<string> {
     if (isTauri()) {
       const invoke = getInvoke();
       if (invoke) return (await invoke('get_platform')) as string;
     }
-    if (isCapacitor()) return Capacitor.getPlatform(); // 'ios' | 'android' | 'web'
+    if (isCapacitor()) return Capacitor.getPlatform();
     return 'web';
   },
 
-  /** Get the app version. */
   async getAppVersion(): Promise<string> {
     const invoke = getInvoke();
     if (!invoke) return '0.0.0';
     return (await invoke('get_app_version')) as string;
   },
 
-  /** Open a URL in the system default browser. */
   async openExternal(url: string): Promise<void> {
     if (isTauri()) {
       const w = window as Record<string, unknown>;
@@ -73,11 +80,9 @@ export const nativeRuntime = {
       if (openUrl) await openUrl(url);
       return;
     }
-    // Capacitor and web: both use window.open
     window.open(url, '_blank', 'noopener');
   },
 
-  /** Trigger haptic feedback on mobile. No-op on desktop/web. */
   async haptic(style: 'light' | 'medium' | 'heavy' = 'medium'): Promise<void> {
     if (!isCapacitor()) return;
     const { Haptics, ImpactStyle } = await import('@capacitor/haptics');
@@ -85,25 +90,3 @@ export const nativeRuntime = {
     await Haptics.impact({ style: map[style] });
   },
 };
-=======
-export type DesktopCommandResult = {
-  stdout: string;
-  stderr: string;
-  exitCode: number;
-};
-
-const isWindowDefined = typeof window !== 'undefined';
-
-export function isTauriDesktop(): boolean {
-  return isWindowDefined && '__TAURI_INTERNALS__' in window;
-}
-
-export async function runDesktopCommand(command: string, args: string[] = []): Promise<DesktopCommandResult> {
-  if (!isTauriDesktop()) {
-    throw new Error('Desktop command execution is only available in the downloadable desktop app.');
-  }
-
-  const { invoke } = await import('@tauri-apps/api/core');
-  return invoke<DesktopCommandResult>('run_terminal_command', { command, args });
-}
->>>>>>> origin/main
