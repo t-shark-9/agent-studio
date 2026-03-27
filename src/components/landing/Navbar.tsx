@@ -6,8 +6,9 @@ import { Cpu, Menu, X } from 'lucide-react';
 const NAV_LINKS = [
   { href: '/', label: 'Home' },
   { href: '/features', label: 'Features' },
-  { href: '/about', label: 'About' },
-  { href: '/contact', label: 'Contact' },
+  { href: '/app-builder', label: 'App Builder' },
+  { href: '/straightforward-design', label: 'For Companies' },
+  { href: '/pricing', label: 'Pricing' },
 ];
 
 export function Navbar() {
@@ -18,13 +19,11 @@ export function Navbar() {
     <nav className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-xl border-b border-border/50" role="navigation" aria-label="Main navigation">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
-          <Link to="/" className="flex items-center gap-2 group" aria-label="Agent Studio Home">
+          <Link to="/" className="flex items-center gap-2 group" aria-label="Jimply Home">
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-accent flex items-center justify-center">
               <Cpu className="w-4 h-4 text-primary-foreground" />
             </div>
-            <span className="text-lg font-semibold tracking-tight">
-              Agent <span className="text-primary">Studio</span>
-            </span>
+            <span className="text-lg font-semibold tracking-tight text-primary">Jimply</span>
           </Link>
 
           {/* Desktop */}
@@ -42,12 +41,13 @@ export function Navbar() {
                 {link.label}
               </Link>
             ))}
-            <Link
-              to="/app"
+            <a
+              href="https://dzimplei.app"
+              rel="noopener"
               className="ml-3 px-5 py-2 rounded-lg text-sm font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-colors shadow-lg shadow-primary/20"
             >
-              Launch Studio
-            </Link>
+              Open App
+            </a>
           </div>
 
           {/* Mobile toggle */}
@@ -86,13 +86,14 @@ export function Navbar() {
                   {link.label}
                 </Link>
               ))}
-              <Link
-                to="/app"
+              <a
+                href="https://dzimplei.app"
+                rel="noopener"
                 onClick={() => setMobileOpen(false)}
                 className="block mt-2 px-4 py-3 rounded-lg text-sm font-semibold text-center bg-primary text-primary-foreground"
               >
-                Launch Studio
-              </Link>
+                Open App
+              </a>
             </div>
           </motion.div>
         )}
